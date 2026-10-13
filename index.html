@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Prompter</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Prompter">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#000; --fg:#fff; --dim:rgba(0,0,0,.72); --accent:#4da3ff; --panel:#16181c; --panel2:#22262c; --line:#2f343b; --muted:#9aa3ad;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#0b0c0e;color:#e8eaed;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-height:44px;cursor:pointer}
+button:active{filter:brightness(1.3)}
+button.primary{background:var(--accent);color:#04121f;border-color:transparent;font-weight:700}
+button.on{background:var(--accent);color:#04121f;border-color:transparent}
+.hidden{display:none !important}
+
+/* ---------- editor ---------- */
+#editor{min-height:100%;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+#editor header{display:flex;align-items:center;gap:12px}
+#editor h1{margin:0;font-size:22px;flex:1}
+#script{width:100%;min-height:42vh;flex:1;resize:vertical;background:var(--panel);color:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;font-size:19px;line-height:1.5;font-family:inherit}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.meta{color:var(--muted);font-size:14px;flex:1}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.card h2{margin:0 0 10px;font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{display:flex;justify-content:space-between;font-size:15px}
+.field label b{color:var(--accent);font-weight:600}
+input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
+.seg{display:flex;gap:8px;flex-wrap:wrap}
+.seg button{flex:1;min-width:84px}
+.keys{display:grid;grid-template-columns:1fr auto auto;gap:8px 10px;align-items:center}
+.keys code{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:14px;color:#cfe6ff;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.keys button{min-height:38px;padding:6px 12px}
+.hint{color:var(--muted);font-size:14px;line-height:1.45;margin:8px 0 0}
+#startBtn{font-size:20px;padding:14px 28px;min-height:56px}
+
+/* ---------- prompter ---------- */
+#prompter{position:fixed;inset:0;background:var(--bg);color:var(--fg);overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#stage{position:absolute;inset:0;transform-origin:50% 50%}
+#viewport{position:absolute;inset:0;overflow:hidden;touch-action:none}
+#content{position:absolute;left:0;right:0;top:0;will-change:transform;text-align:center;font-weight:600;white-space:pre-wrap;overflow-wrap:break-word}
+#text{margin:0 auto;display:block}
+#dimTop{position:absolute;left:0;right:0;top:0;background:var(--dim);pointer-events:none}
+#band{position:absolute;left:0;right:0;pointer-events:none;border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);opacity:.55}
+#band::before,#band::after{content:"";position:absolute;top:50%;width:0;height:0;border:14px solid transparent;transform:translateY(-50%)}
+#band::before{left:6px;border-left-color:var(--accent);border-right:0}
+#band::after{right:6px;border-right-color:var(--accent);border-left:0}
+#prompter.noguide #band,#prompter.noguide #dimTop{display:none}
+#progress{position:absolute;left:0;top:0;height:4px;background:var(--accent);width:0;z-index:5;pointer-events:none}
+#countOverlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30vmin;font-weight:800;color:var(--accent);pointer-events:none;z-index:6;text-shadow:0 0 40px rgba(0,0,0,.6)}
+#blank{position:absolute;inset:0;background:#000;z-index:8}
+#status{position:absolute;top:max(12px,env(safe-area-inset-top));right:16px;z-index:7;font-size:18px;color:var(--accent);background:rgba(0,0,0,.55);padding:6px 12px;border-radius:10px;pointer-events:none;font-variant-numeric:tabular-nums;transition:opacity .3s}
+
+#controls{position:absolute;left:0;right:0;bottom:0;z-index:9;padding:12px max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
+  background:linear-gradient(transparent,rgba(0,0,0,.88) 35%);display:flex;flex-direction:column;gap:10px;transition:opacity .35s,transform .35s;color:#fff}
+#controls.away{opacity:0;transform:translateY(30px);pointer-events:none}
+#controls .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
+#controls button{background:rgba(40,44,52,.92);min-width:48px;font-size:17px}
+#controls button.on{background:var(--accent);color:#04121f}
+#controls button.big{min-width:96px;font-size:20px;font-weight:700}
+#controls .sp{display:flex;align-items:center;gap:8px;color:#fff;font-size:16px}
+#controls .sp input{width:min(30vw,260px)}
+#controls .val{min-width:44px;text-align:center;font-variant-numeric:tabular-nums;color:var(--accent)}
+.sep{width:1px;height:28px;background:rgba(255,255,255,.2)}
+</style>
+</head>
+<body>
+
+<!-- ============ EDITOR ============ -->
+<div id="editor">
+  <header>
+    <h1>Prompter</h1>
+    <button id="startBtn" class="primary">▶ Start</button>
+  </header>
+
+  <textarea id="script" placeholder="Paste or type your script here…" spellcheck="false" autocapitalize="sentences"></textarea>
+  <div class="row">
+    <span class="meta" id="count"></span>
+    <button id="importBtn">Import .txt</button>
+    <button id="clearBtn">Clear</button>
+    <input id="file" type="file" accept=".txt,text/plain" class="hidden">
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Text</h2>
+      <div class="field"><label>Font size <b id="sizeV"></b></label><input id="size" type="range" min="24" max="160" step="2"></div>
+      <div class="field"><label>Text width <b id="widthV"></b></label><input id="width" type="range" min="40" max="100" step="1"></div>
+      <div class="field"><label>Line spacing <b id="lineV"></b></label><input id="line" type="range" min="1" max="2.2" step="0.05"></div>
+      <div class="field"><label>Theme</label>
+        <div class="seg" id="theme">
+          <button data-v="dark">White on black</button>
+          <button data-v="amber">Yellow on black</button>
+          <button data-v="light">Black on white</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Scrolling</h2>
+      <div class="field"><label>Speed <b id="speedV"></b></label><input id="speed" type="range" min="1" max="100" step="1"></div>
+      <div class="field"><label>Reading line position <b id="guideV"></b></label><input id="guide" type="range" min="5" max="70" step="1"></div>
+      <div class="field"><label>Countdown before start <b id="countdownV"></b></label><input id="countdown" type="range" min="0" max="10" step="1"></div>
+      <div class="seg" style="margin-top:8px">
+        <button id="showGuide">Reading line</button>
+        <button id="autohide">Auto-hide controls</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Teleprompter glass</h2>
+      <div class="seg">
+        <button id="mirror">Mirror text ↔</button>
+        <button id="flip">Flip upside-down ↕</button>
+      </div>
+      <p class="hint">Turn on <b>Mirror</b> for a beam-splitter teleprompter like the Neewer X11 so the text reads correctly in the glass. You can also toggle it live from the on-screen controls.</p>
+    </div>
+
+    <div class="card">
+      <h2>Bluetooth remote (Satechi R2)</h2>
+      <div class="keys" id="keys"></div>
+      <p class="hint">Pair the remote in iPad Settings → Bluetooth. Tap <b>Learn</b>, then press the button on your remote you want for that action. Anything it sends as a normal keyboard key works.</p>
+      <div class="row" style="margin-top:8px"><button id="resetKeys">Reset to defaults</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PROMPTER ============ -->
+<div id="prompter" class="hidden">
+  <div id="progress"></div>
+  <div id="stage">
+    <div id="viewport">
+      <div id="content"><div id="text"></div></div>
+      <div id="dimTop"></div>
+      <div id="band"></div>
+    </div>
+  </div>
+  <div id="status"></div>
+  <div id="countOverlay" class="hidden"></div>
+  <div id="blank" class="hidden"></div>
+
+  <div id="controls">
+    <div class="bar">
+      <button id="cExit" title="Back to script">✕ Edit</button>
+      <button id="cRestart" title="Back to top">⏮</button>
+      <button id="cBack" title="Back a few lines">⏪</button>
+      <button id="cPlay" class="big">▶ Play</button>
+      <button id="cFwd" title="Forward a few lines">⏩</button>
+      <div class="sep"></div>
+      <div class="sp">Speed
+        <button id="cSlow">−</button><span class="val" id="cSpeedV"></span><button id="cFast">+</button>
+      </div>
+      <div class="sp">Size
+        <button id="cSmall">A−</button><span class="val" id="cSizeV"></span><button id="cBig">A+</button>
+      </div>
+    </div>
+    <div class="bar">
+      <button id="cMirror">Mirror ↔</button>
+      <button id="cFlip">Flip ↕</button>
+      <button id="cBlank">Blank screen</button>
+      <button id="cFull">Full screen</button>
+      <button id="cHide">Hide controls</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+
+/* ---------------- settings ---------------- */
+const ACTIONS = [
+  ['playPause', 'Play / pause'],
+  ['faster',    'Faster'],
+  ['slower',    'Slower'],
+  ['back',      'Back a few lines'],
+  ['forward',   'Forward a few lines'],
+  ['restart',   'Back to top'],
+  ['blank',     'Blank screen'],
+  ['controls',  'Show / hide controls'],
+  ['exit',      'Exit to script'],
+];
+const DEFAULT_KEYS = {
+  playPause: ['PageDown', 'ArrowRight', 'Space', 'Enter'],
+  back:      ['PageUp', 'ArrowLeft'],
+  faster:    ['ArrowUp'],
+  slower:    ['ArrowDown'],
+  forward:   ['KeyF'],
+  restart:   ['Home'],
+  blank:     ['Period', 'KeyB'],
+  controls:  ['KeyC'],
+  exit:      ['Escape'],
+};
+const DEFAULTS = {
+  text: '', size: 64, width: 84, line: 1.4, speed: 30, guide: 30, countdown: 3,
+  theme: 'dark', mirror: false, flip: false, showGuide: true, autohide: true,
+  keys: DEFAULT_KEYS,
+};
+let S;
+try { S = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('prompter.v1') || '{}')); }
+catch (e) { S = Object.assign({}, DEFAULTS); }
+S.keys = Object.assign({}, DEFAULT_KEYS, S.keys || {});
+function save() { try { localStorage.setItem('prompter.v1', JSON.stringify(S)); } catch (e) {} }
+
+const THEMES = {
+  dark:  { bg: '#000',    fg: '#fff',    dim: 'rgba(0,0,0,.72)' },
+  amber: { bg: '#000',    fg: '#ffd84a', dim: 'rgba(0,0,0,.72)' },
+  light: { bg: '#fff',    fg: '#000',    dim: 'rgba(255,255,255,.75)' },
+};
+const speedPx = () => S.speed * 1.5;               // px per second
+const wordCount = () => (S.text.trim().match(/\S+/g) || []).length;
+
+/* ---------------- editor ---------------- */
+const el = {
+  script: $('#script'), count: $('#count'),
+  prompter: $('#prompter'), editor: $('#editor'), content: $('#content'), text: $('#text'),
+  viewport: $('#viewport'), stage: $('#stage'), band: $('#band'), dim: $('#dimTop'),
+  progress: $('#progress'), status: $('#status'), controls: $('#controls'),
+  countdown: $('#countOverlay'), blank: $('#blank'), play: $('#cPlay'),
+};
+
+const sliders = {
+  size:      v => v + ' px',
+  width:     v => v + '%',
+  line:      v => (+v).toFixed(2),
+  speed:     v => v,
+  guide:     v => v + '%',
+  countdown: v => v == 0 ? 'off' : v + ' s',
+};
+for (const k in sliders) {
+  const inp = $('#' + k), out = $('#' + k + 'V');
+  inp.value = S[k]; out.textContent = sliders[k](S[k]);
+  inp.addEventListener('input', () => {
+    S[k] = +inp.value; out.textContent = sliders[k](S[k]); save();
+    if (!el.prompter.classList.contains('hidden')) applyLook(true);
+  });
+}
+function refreshEditor() {
+  document.querySelectorAll('#theme button').forEach(b => b.classList.toggle('on', b.dataset.v === S.theme));
+  ['mirror', 'flip', 'showGuide', 'autohide'].forEach(k => $('#' + k).classList.toggle('on', !!S[k]));
+  const w = wordCount();
+  const mins = w / 150;
+  el.count.textContent = w ? `${w} words · about ${mins < 1 ? Math.max(1, Math.round(mins * 60)) + ' sec' : mins.toFixed(1) + ' min'} at 150 wpm` : 'No script yet';
+}
+el.script.value = S.text;
+el.script.addEventListener('input', () => { S.text = el.script.value; save(); refreshEditor(); });
+document.querySelectorAll('#theme button').forEach(b => b.onclick = () => { S.theme = b.dataset.v; save(); refreshEditor(); });
+['mirror', 'flip', 'showGuide', 'autohide'].forEach(k => $('#' + k).onclick = () => { S[k] = !S[k]; save(); refreshEditor(); });
+$('#clearBtn').onclick = () => { if (!S.text || confirm('Clear the script?')) { el.script.value = S.text = ''; save(); refreshEditor(); } };
+$('#importBtn').onclick = () => $('#file').click();
+$('#file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  el.script.value = S.text = await f.text(); save(); refreshEditor(); e.target.value = '';
+};
+
+/* key mapping UI */
+let learning = null;
+function renderKeys() {
+  const box = $('#keys'); box.innerHTML = '';
+  for (const [id, label] of ACTIONS) {
+    const name = document.createElement('div'); name.textContent = label;
+    const code = document.createElement('code');
+    code.textContent = learning === id ? 'press a button…' : (S.keys[id] || []).join(', ') || '—';
+    const btn = document.createElement('button');
+    btn.textContent = learning === id ? 'Cancel' : 'Learn';
+    btn.onclick = () => { learning = learning === id ? null : id; renderKeys(); };
+    box.append(name, code, btn);
+  }
+}
+$('#resetKeys').onclick = () => { S.keys = JSON.parse(JSON.stringify(DEFAULT_KEYS)); save(); renderKeys(); };
+const keyId = e => e.code || e.key;
+
+/* ---------------- prompter engine ---------------- */
+let y = 0, maxY = 0, playing = false, last = 0, raf = 0, dragging = false;
+let countTimer = null, hideTimer = null, controlsOn = true, blanked = false, wake = null;
+
+function applyLook(keepPos) {
+  const t = THEMES[S.theme] || THEMES.dark, r = document.documentElement.style;
+  r.setProperty('--bg', t.bg); r.setProperty('--fg', t.fg); r.setProperty('--dim', t.dim);
+  const ratio = maxY ? y / maxY : 0;
+  el.text.style.fontSize = S.size + 'px';
+  el.text.style.lineHeight = S.line;
+  el.text.style.width = S.width + '%';
+  el.stage.style.transform = `scale(${S.mirror ? -1 : 1},${S.flip ? -1 : 1})`;
+  el.prompter.classList.toggle('noguide', !S.showGuide);
+  const vh = el.viewport.clientHeight, g = vh * S.guide / 100, lh = S.size * S.line;
+  el.content.style.paddingTop = g + 'px';
+  el.content.style.paddingBottom = (vh - g) + 'px';
+  el.band.style.top = g + 'px'; el.band.style.height = lh + 'px';
+  el.dim.style.height = g + 'px';
+  maxY = Math.max(0, el.content.offsetHeight - vh);
+  setY(keepPos ? ratio * maxY : y);
+  $('#cSpeedV').textContent = S.speed; $('#cSizeV').textContent = S.size;
+  $('#cMirror').classList.toggle('on', S.mirror); $('#cFlip').classList.toggle('on', S.flip);
+}
+function setY(v) {
+  y = Math.max(0, Math.min(maxY, v));
+  el.content.style.transform = `translate3d(0,${-y}px,0)`;
+  el.progress.style.width = (maxY ? y / maxY * 100 : 0) + '%';
+  updateStatus();
+}
+function fmt(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function updateStatus() {
+  const rem = (maxY - y) / speedPx();
+  el.status.textContent = (playing ? '' : (countTimer ? '' : 'Paused · ')) + fmt(rem) + ' left';
+}
+function tick(t) {
+  if (!playing) return;
+  if (last && !dragging) setY(y + speedPx() * Math.min(t - last, 100) / 1000);
+  last = t;
+  if (y >= maxY) { pause(); return; }
+  raf = requestAnimationFrame(tick);
+}
+function begin() {
+  cancelCountdown();
+  if (y >= maxY && maxY > 0) setY(0);
+  playing = true; last = 0; el.play.textContent = '❚❚ Pause';
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
+  scheduleHide(); updateStatus();
+}
+function play() {
+  if (playing || countTimer) return;
+  if (y < 2 && S.countdown > 0) {
+    let n = S.countdown;
+    el.countdown.classList.remove('hidden'); el.countdown.textContent = n;
+    el.play.textContent = '❚❚ Cancel';
+    countTimer = setInterval(() => {
+      n--;
+      if (n <= 0) { begin(); } else el.countdown.textContent = n;
+    }, 1000);
+    scheduleHide(); updateStatus();
+  } else begin();
+}
+function cancelCountdown() {
+  if (countTimer) { clearInterval(countTimer); countTimer = null; }
+  el.countdown.classList.add('hidden');
+}
+function pause() {
+  cancelCountdown(); playing = false; cancelAnimationFrame(raf);
+  el.play.textContent = '▶ Play'; showControls(); updateStatus();
+}
+const toggle = () => (playing || countTimer) ? pause() : play();
+const lines = n => S.size * S.line * n;
+const flipSign = () => S.flip ? -1 : 1;
+function setSpeed(d) { S.speed = Math.max(1, Math.min(100, S.speed + d)); save(); $('#speed').value = S.speed; $('#speedV').textContent = S.speed; $('#cSpeedV').textContent = S.speed; flash('Speed ' + S.speed); updateStatus(); }
+function setSize(d) { S.size = Math.max(24, Math.min(160, S.size + d)); save(); $('#size').value = S.size; $('#sizeV').textContent = S.size + ' px'; applyLook(true); }
+
+let flashT;
+function flash(msg) {
+  el.status.textContent = msg; el.status.style.opacity = 1;
+  clearTimeout(flashT); flashT = setTimeout(updateStatus, 900);
+}
+
+/* controls visibility */
+function showControls() { controlsOn = true; el.controls.classList.remove('away'); scheduleHide(); }
+function hideControls() { controlsOn = false; el.controls.classList.add('away'); }
+function scheduleHide() {
+  clearTimeout(hideTimer);
+  if (S.autohide && (playing || countTimer)) hideTimer = setTimeout(hideControls, 3500);
+}
+function setBlank(on) { blanked = on; el.blank.classList.toggle('hidden', !on); }
+
+/* open / close */
+async function openPrompter() {
+  if (!S.text.trim()) { el.script.focus(); return; }
+  el.text.textContent = S.text;
+  el.editor.classList.add('hidden'); el.prompter.classList.remove('hidden');
+  y = 0; applyLook(false); setY(0); setBlank(false); pause();
+  try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+function closePrompter() {
+  pause(); setBlank(false);
+  el.prompter.classList.add('hidden'); el.editor.classList.remove('hidden');
+  try { wake && wake.release(); wake = null; } catch (e) {}
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+}
+const inPrompter = () => !el.prompter.classList.contains('hidden');
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && inPrompter() && navigator.wakeLock) {
+    try { wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+});
+window.addEventListener('resize', () => { if (inPrompter()) applyLook(true); });
+window.addEventListener('orientationchange', () => setTimeout(() => inPrompter() && applyLook(true), 250));
+
+/* touch / mouse on the text: tap = play/pause, drag = scrub */
+let pStart = null;
+el.viewport.addEventListener('pointerdown', e => {
+  el.viewport.setPointerCapture(e.pointerId);
+  pStart = { y: e.clientY, at: y, moved: false, time: Date.now() };
+});
+el.viewport.addEventListener('pointermove', e => {
+  if (!pStart) return;
+  const dy = e.clientY - pStart.y;
+  if (!pStart.moved && Math.abs(dy) > 8) { pStart.moved = true; dragging = true; }
+  if (pStart.moved) setY(pStart.at - dy * flipSign());
+});
+const endPointer = e => {
+  if (!pStart) return;
+  const wasMove = pStart.moved; pStart = null; dragging = false; last = 0;
+  if (!wasMove && e.type === 'pointerup') { showControls(); toggle(); }
+};
+el.viewport.addEventListener('pointerup', endPointer);
+el.viewport.addEventListener('pointercancel', endPointer);
+el.viewport.addEventListener('wheel', e => { setY(y + e.deltaY * flipSign()); e.preventDefault(); }, { passive: false });
+el.controls.addEventListener('pointerdown', () => { showControls(); });
+
+/* on-screen buttons */
+$('#startBtn').onclick = openPrompter;
+$('#cExit').onclick = closePrompter;
+$('#cRestart').onclick = () => { setY(0); };
+$('#cBack').onclick = () => setY(y - lines(3));
+$('#cFwd').onclick = () => setY(y + lines(3));
+$('#cPlay').onclick = toggle;
+$('#cSlow').onclick = () => setSpeed(-2);
+$('#cFast').onclick = () => setSpeed(2);
+$('#cSmall').onclick = () => setSize(-4);
+$('#cBig').onclick = () => setSize(4);
+$('#cMirror').onclick = () => { S.mirror = !S.mirror; save(); applyLook(true); refreshEditor(); };
+$('#cFlip').onclick = () => { S.flip = !S.flip; save(); applyLook(true); refreshEditor(); };
+$('#cBlank').onclick = () => { setBlank(true); };
+el.blank.addEventListener('pointerdown', () => setBlank(false));
+$('#cHide').onclick = hideControls;
+$('#cFull').onclick = () => {
+  const d = document.documentElement;
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (d.requestFullscreen) d.requestFullscreen().catch(() => {});
+  else if (d.webkitRequestFullscreen) d.webkitRequestFullscreen();
+};
+if (!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) ||
+    window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) $('#cFull').classList.add('hidden');
+
+/* keyboard / Bluetooth remote */
+const run = {
+  playPause: () => { showControls(); toggle(); },
+  faster: () => setSpeed(2),
+  slower: () => setSpeed(-2),
+  back: () => setY(y - lines(3)),
+  forward: () => setY(y + lines(3)),
+  restart: () => { setY(0); flash('Top'); },
+  blank: () => setBlank(!blanked),
+  controls: () => controlsOn ? hideControls() : showControls(),
+  exit: () => { if (blanked) setBlank(false); else closePrompter(); },
+};
+function matches(list, e) {
+  return list.includes(e.code) || list.includes(e.key) || (e.key === ' ' && list.includes('Space'));
+}
+window.addEventListener('keydown', e => {
+  if (learning) {
+    e.preventDefault();
+    const id = keyId(e);
+    // a key belongs to only one action
+    for (const a in S.keys) S.keys[a] = S.keys[a].filter(k => k !== id);
+    S.keys[learning] = [id]; save();
+    learning = null; renderKeys(); return;
+  }
+  if (!inPrompter()) return;
+  for (const [id] of ACTIONS) {
+    if (matches(S.keys[id] || [], e)) { e.preventDefault(); run[id](); return; }
+  }
+});
+
+/* ---------------- boot ---------------- */
+refreshEditor(); renderKeys();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+// test hook
+window.__prompter = { S, get y() { return y; }, get maxY() { return maxY; }, get playing() { return playing; } };
+})();
+</script>
+</body>
+</html>
