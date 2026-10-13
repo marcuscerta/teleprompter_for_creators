@@ -1,4 +1,4 @@
-name: Deploy Prompter to GitHub Pages
+name: Deploy Teleprompters for Creators to GitHub Pages
 
 on:
   push:
