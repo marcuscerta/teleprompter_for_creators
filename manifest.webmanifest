@@ -1,6 +1,6 @@
 {
-  "name": "Prompter",
-  "short_name": "Prompter",
+  "name": "Teleprompters for Creators",
+  "short_name": "Teleprompters",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

@@ -1,4 +1,4 @@
-# Prompter
+# Teleprompters for Creators
 
 A simple iPad teleprompter. One static web page, works offline once loaded, no accounts.
 
