@@ -73,6 +73,15 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
 #controls .sp{display:flex;align-items:center;gap:8px;color:#fff;font-size:16px}
 #controls .sp input{width:min(30vw,260px)}
 #controls .val{min-width:44px;text-align:center;font-variant-numeric:tabular-nums;color:var(--accent)}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;opacity:.55}
+#cam.mirrored{transform:scaleX(-1)}
+#prompter.cam #dimTop{display:none}
+#prompter.cam #text{text-shadow:var(--tshadow,none)}
+#controls button.rec.on{background:#e5484d;color:#fff}
+#saveDlg{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:20px}
+#saveDlg .box{background:#16181c;border:1px solid #2f343b;border-radius:18px;padding:24px;max-width:460px;width:100%;text-align:center;color:#fff;display:flex;flex-direction:column;gap:12px}
+#saveDlg h3{margin:0;font-size:22px}
+#saveDlg p{margin:0;color:#9aa3ad;line-height:1.45}
 .sep{width:1px;height:28px;background:rgba(255,255,255,.2)}
 </style>
 </head>
@@ -129,6 +138,30 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
     </div>
 
     <div class="card">
+      <h2>Camera &amp; recording</h2>
+      <div class="seg">
+        <button id="camOn">Camera behind text</button>
+        <button id="camMirror">Mirror preview</button>
+      </div>
+      <div class="field" style="margin-top:10px"><label>Camera</label>
+        <div class="seg" id="camFacing">
+          <button data-v="user">Front</button>
+          <button data-v="environment">Back</button>
+        </div>
+      </div>
+      <div class="field" style="margin-top:6px"><label>Recording quality</label>
+        <div class="seg" id="camQuality">
+          <button data-v="max">Highest</button>
+          <button data-v="1080">1080p</button>
+          <button data-v="720">720p</button>
+        </div>
+      </div>
+      <div class="field" style="margin-top:6px"><label>Camera brightness behind text <b id="camOpacityV"></b></label><input id="camOpacity" type="range" min="10" max="100" step="5"></div>
+      <div class="seg" style="margin-top:8px"><button id="recPlay">Record also starts scrolling</button></div>
+      <p class="hint">Shows your camera behind the script so you can see yourself while reading. <b>Record</b> saves the camera and microphone only (not the text). The preview is mirrored like a selfie, but the saved video is not. Safari asks for camera and microphone permission the first time. Recording quality in a web app is below the built-in Camera app.</p>
+    </div>
+
+    <div class="card">
       <h2>Bluetooth remote (Satechi R2)</h2>
       <div class="keys" id="keys"></div>
       <p class="hint">Pair the remote in iPad Settings → Bluetooth. Tap <b>Learn</b>, then press the button on your remote you want for that action. Anything it sends as a normal keyboard key works.</p>
@@ -140,6 +173,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
 <!-- ============ PROMPTER ============ -->
 <div id="prompter" class="hidden">
   <div id="progress"></div>
+  <video id="cam" class="hidden" playsinline muted autoplay></video>
   <div id="stage">
     <div id="viewport">
       <div id="content"><div id="text"></div></div>
@@ -169,10 +203,24 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
     <div class="bar">
       <button id="cMirror">Mirror ↔</button>
       <button id="cFlip">Flip ↕</button>
+      <button id="cCam">Camera</button>
+      <button id="cCamFlip" class="hidden">Switch camera</button>
+      <button id="cRec" class="rec hidden">● Record</button>
       <button id="cBlank">Blank screen</button>
       <button id="cFull">Full screen</button>
       <button id="cHide">Hide controls</button>
     </div>
+  </div>
+</div>
+
+<div id="saveDlg" class="hidden">
+  <div class="box">
+    <h3>Recording finished</h3>
+    <p id="saveInfo"></p>
+    <button id="saveShare" class="primary">Save to Photos / Share…</button>
+    <button id="saveFile">Download file</button>
+    <button id="saveDone">Done</button>
+    <p>In the share sheet, choose <b>Save Video</b> to put it in Photos.</p>
   </div>
 </div>
 
@@ -184,6 +232,7 @@ const $ = s => document.querySelector(s);
 /* ---------------- settings ---------------- */
 const ACTIONS = [
   ['playPause', 'Play / pause'],
+  ['record',    'Record start / stop'],
   ['faster',    'Faster'],
   ['slower',    'Slower'],
   ['back',      'Back a few lines'],
@@ -203,10 +252,12 @@ const DEFAULT_KEYS = {
   blank:     ['Period', 'KeyB'],
   controls:  ['KeyC'],
   exit:      ['Escape'],
+  record:    ['KeyR'],
 };
 const DEFAULTS = {
   text: '', size: 64, width: 84, line: 1.4, speed: 30, guide: 30, countdown: 3,
   theme: 'dark', mirror: false, flip: false, showGuide: true, autohide: true,
+  camOn: false, camFacing: 'user', camQuality: 'max', camOpacity: 55, camMirror: true, recPlay: true,
   keys: DEFAULT_KEYS,
 };
 let S;
@@ -216,9 +267,9 @@ S.keys = Object.assign({}, DEFAULT_KEYS, S.keys || {});
 function save() { try { localStorage.setItem('prompter.v1', JSON.stringify(S)); } catch (e) {} }
 
 const THEMES = {
-  dark:  { bg: '#000',    fg: '#fff',    dim: 'rgba(0,0,0,.72)' },
-  amber: { bg: '#000',    fg: '#ffd84a', dim: 'rgba(0,0,0,.72)' },
-  light: { bg: '#fff',    fg: '#000',    dim: 'rgba(255,255,255,.75)' },
+  dark:  { bg: '#000',    fg: '#fff',    dim: 'rgba(0,0,0,.72)', shadow: '0 2px 10px #000' },
+  amber: { bg: '#000',    fg: '#ffd84a', dim: 'rgba(0,0,0,.72)', shadow: '0 2px 10px #000' },
+  light: { bg: '#fff',    fg: '#000',    dim: 'rgba(255,255,255,.75)', shadow: '0 1px 10px #fff' },
 };
 const speedPx = () => S.speed * 1.5;               // px per second
 const wordCount = () => (S.text.trim().match(/\S+/g) || []).length;
@@ -228,7 +279,7 @@ const el = {
   script: $('#script'), count: $('#count'),
   prompter: $('#prompter'), editor: $('#editor'), content: $('#content'), text: $('#text'),
   viewport: $('#viewport'), stage: $('#stage'), band: $('#band'), dim: $('#dimTop'),
-  progress: $('#progress'), status: $('#status'), controls: $('#controls'),
+  cam: $('#cam'), progress: $('#progress'), status: $('#status'), controls: $('#controls'),
   countdown: $('#countOverlay'), blank: $('#blank'), play: $('#cPlay'),
 };
 
@@ -239,6 +290,7 @@ const sliders = {
   speed:     v => v,
   guide:     v => v + '%',
   countdown: v => v == 0 ? 'off' : v + ' s',
+  camOpacity: v => v + '%',
 };
 for (const k in sliders) {
   const inp = $('#' + k), out = $('#' + k + 'V');
@@ -248,9 +300,11 @@ for (const k in sliders) {
     if (!el.prompter.classList.contains('hidden')) applyLook(true);
   });
 }
+const TOGGLES = ['mirror', 'flip', 'showGuide', 'autohide', 'camOn', 'camMirror', 'recPlay'];
 function refreshEditor() {
   document.querySelectorAll('#theme button').forEach(b => b.classList.toggle('on', b.dataset.v === S.theme));
-  ['mirror', 'flip', 'showGuide', 'autohide'].forEach(k => $('#' + k).classList.toggle('on', !!S[k]));
+  TOGGLES.forEach(k => $('#' + k).classList.toggle('on', !!S[k]));
+  ['camFacing', 'camQuality'].forEach(id => document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v === S[id])));
   const w = wordCount();
   const mins = w / 150;
   el.count.textContent = w ? `${w} words · about ${mins < 1 ? Math.max(1, Math.round(mins * 60)) + ' sec' : mins.toFixed(1) + ' min'} at 150 wpm` : 'No script yet';
@@ -258,7 +312,8 @@ function refreshEditor() {
 el.script.value = S.text;
 el.script.addEventListener('input', () => { S.text = el.script.value; save(); refreshEditor(); });
 document.querySelectorAll('#theme button').forEach(b => b.onclick = () => { S.theme = b.dataset.v; save(); refreshEditor(); });
-['mirror', 'flip', 'showGuide', 'autohide'].forEach(k => $('#' + k).onclick = () => { S[k] = !S[k]; save(); refreshEditor(); });
+TOGGLES.forEach(k => $('#' + k).onclick = () => { S[k] = !S[k]; save(); refreshEditor(); });
+['camFacing', 'camQuality'].forEach(id => document.querySelectorAll('#' + id + ' button').forEach(b => b.onclick = () => { S[id] = b.dataset.v; save(); refreshEditor(); }));
 $('#clearBtn').onclick = () => { if (!S.text || confirm('Clear the script?')) { el.script.value = S.text = ''; save(); refreshEditor(); } };
 $('#importBtn').onclick = () => $('#file').click();
 $('#file').onchange = async e => {
@@ -285,11 +340,15 @@ const keyId = e => e.code || e.key;
 
 /* ---------------- prompter engine ---------------- */
 let y = 0, maxY = 0, playing = false, last = 0, raf = 0, dragging = false;
+let camStream = null, recorder = null, recChunks = [], recStart = 0, recDur = 0, recTimer = 0, recBlob = null, recMime = '', saved = false;
 let countTimer = null, hideTimer = null, controlsOn = true, blanked = false, wake = null;
 
 function applyLook(keepPos) {
   const t = THEMES[S.theme] || THEMES.dark, r = document.documentElement.style;
-  r.setProperty('--bg', t.bg); r.setProperty('--fg', t.fg); r.setProperty('--dim', t.dim);
+  r.setProperty('--bg', t.bg); r.setProperty('--fg', t.fg); r.setProperty('--dim', t.dim); r.setProperty('--tshadow', t.shadow);
+  el.cam.style.opacity = S.camOpacity / 100;
+  el.cam.classList.toggle('mirrored', S.camFacing === 'user' && S.camMirror);
+  el.prompter.classList.toggle('cam', !!camStream);
   const ratio = maxY ? y / maxY : 0;
   el.text.style.fontSize = S.size + 'px';
   el.text.style.lineHeight = S.line;
@@ -315,7 +374,7 @@ function setY(v) {
 function fmt(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 function updateStatus() {
   const rem = (maxY - y) / speedPx();
-  el.status.textContent = (playing ? '' : (countTimer ? '' : 'Paused · ')) + fmt(rem) + ' left';
+  el.status.textContent = (recorder ? '● REC ' + fmt((Date.now() - recStart) / 1000) + ' · ' : '') + (playing ? '' : (countTimer ? '' : 'Paused · ')) + fmt(rem) + ' left';
 }
 function tick(t) {
   if (!playing) return;
@@ -378,11 +437,11 @@ async function openPrompter() {
   if (!S.text.trim()) { el.script.focus(); return; }
   el.text.textContent = S.text;
   el.editor.classList.add('hidden'); el.prompter.classList.remove('hidden');
-  y = 0; applyLook(false); setY(0); setBlank(false); pause();
+  y = 0; applyLook(false); setY(0); setBlank(false); pause(); startCamera();
   try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (e) {}
 }
 function closePrompter() {
-  pause(); setBlank(false);
+  pause(); setBlank(false); stopRecording(); stopCamera();
   el.prompter.classList.add('hidden'); el.editor.classList.remove('hidden');
   try { wake && wake.release(); wake = null; } catch (e) {}
   if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
@@ -434,6 +493,9 @@ $('#cFlip').onclick = () => { S.flip = !S.flip; save(); applyLook(true); refresh
 $('#cBlank').onclick = () => { setBlank(true); };
 el.blank.addEventListener('pointerdown', () => setBlank(false));
 $('#cHide').onclick = hideControls;
+$('#cCam').onclick = () => { S.camOn = !S.camOn; save(); refreshEditor(); S.camOn ? startCamera() : (stopRecording(), stopCamera()); };
+$('#cCamFlip').onclick = () => { if (recorder) return flash('Stop recording first'); S.camFacing = S.camFacing === 'user' ? 'environment' : 'user'; save(); refreshEditor(); startCamera(); };
+$('#cRec').onclick = () => toggleRecording();
 $('#cFull').onclick = () => {
   const d = document.documentElement;
   if (document.fullscreenElement) document.exitFullscreen();
@@ -443,9 +505,110 @@ $('#cFull').onclick = () => {
 if (!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) ||
     window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) $('#cFull').classList.add('hidden');
 
+/* ---------------- camera + recording ---------------- */
+const QUALITY = { max: { w: 3840, h: 2160, bps: 25e6 }, '1080': { w: 1920, h: 1080, bps: 14e6 }, '720': { w: 1280, h: 720, bps: 8e6 } };
+function camUi() {
+  const has = !!camStream;
+  $('#cCam').classList.toggle('on', S.camOn);
+  $('#cCamFlip').classList.toggle('hidden', !has);
+  $('#cRec').classList.toggle('hidden', !has);
+  $('#cRec').classList.toggle('on', !!recorder);
+  $('#cRec').textContent = recorder ? '■ Stop' : '● Record';
+  el.cam.classList.toggle('hidden', !has);
+  el.prompter.classList.toggle('cam', has);
+}
+async function startCamera() {
+  stopCamera();
+  camUi();
+  if (!S.camOn) return;
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { flash('Camera is not available in this browser'); return; }
+  const q = QUALITY[S.camQuality] || QUALITY.max, portrait = innerHeight > innerWidth;
+  const video = { facingMode: { ideal: S.camFacing }, width: { ideal: portrait ? q.h : q.w }, height: { ideal: portrait ? q.w : q.h }, frameRate: { ideal: 30 } };
+  let noMic = false;
+  try { camStream = await navigator.mediaDevices.getUserMedia({ video, audio: true }); }
+  catch (e) {
+    try { camStream = await navigator.mediaDevices.getUserMedia({ video }); noMic = true; }
+    catch (e2) { flash('Camera blocked. Allow it in Safari settings.'); camUi(); return; }
+  }
+  if (!inPrompter() || !S.camOn) { stopCamera(); return; }
+  el.cam.srcObject = camStream;
+  try { await el.cam.play(); } catch (e) {}
+  const vt = camStream.getVideoTracks()[0];
+  vt.addEventListener('ended', () => { stopRecording(); stopCamera(); flash('Camera stopped'); });
+  const st = vt.getSettings();
+  camUi(); applyLook(true);
+  flash(`Camera ${st.width}×${st.height}${st.frameRate ? ' @' + Math.round(st.frameRate) : ''}${noMic ? ' · no microphone' : ''}`);
+}
+function stopCamera() {
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = null; el.cam.srcObject = null; camUi();
+}
+function pickMime() {
+  const c = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  return window.MediaRecorder ? (c.find(t => MediaRecorder.isTypeSupported(t)) || '') : '';
+}
+function startRecording() {
+  if (recorder) return;
+  if (!camStream) { flash('Turn the camera on first'); return; }
+  if (!window.MediaRecorder) { flash('Recording is not supported in this browser'); return; }
+  recMime = pickMime();
+  const opts = { videoBitsPerSecond: (QUALITY[S.camQuality] || QUALITY.max).bps };
+  if (recMime) opts.mimeType = recMime;
+  try { recorder = new MediaRecorder(camStream, opts); }
+  catch (e) { try { recorder = new MediaRecorder(camStream); } catch (e2) { recorder = null; flash('Could not start recording'); return; } }
+  recChunks = [];
+  const rec = recorder;
+  rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+  rec.onstop = () => finishRecording(rec);
+  rec.onerror = () => flash('Recording error');
+  rec.start(1000);
+  recStart = Date.now(); recTimer = setInterval(updateStatus, 500);
+  camUi(); updateStatus();
+  if (S.recPlay && !playing && !countTimer) play();
+}
+function stopRecording() {
+  if (!recorder) return;
+  recDur = (Date.now() - recStart) / 1000;
+  clearInterval(recTimer);
+  try { recorder.stop(); } catch (e) { finishRecording(recorder); }
+}
+function toggleRecording() { recorder ? (stopRecording(), S.recPlay && pause()) : startRecording(); }
+function finishRecording(rec) {
+  if (recorder !== rec) return;
+  const type = rec.mimeType || recMime || 'video/mp4';
+  recorder = null; clearInterval(recTimer); camUi(); updateStatus();
+  if (!recChunks.length) return;
+  recBlob = new Blob(recChunks, { type }); recChunks = []; saved = false;
+  $('#saveInfo').textContent = `${fmt(recDur)} · ${(recBlob.size / 1048576).toFixed(1)} MB · ${type.includes('mp4') ? 'MP4' : 'WebM'}`;
+  $('#saveDlg').classList.remove('hidden');
+}
+function recFile() {
+  const d = new Date(), z = n => String(n).padStart(2, '0');
+  const name = `teleprompter-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.${recBlob.type.includes('mp4') ? 'mp4' : 'webm'}`;
+  return new File([recBlob], name, { type: recBlob.type });
+}
+function downloadFile(f) {
+  const u = URL.createObjectURL(f), a = document.createElement('a');
+  a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 60000); saved = true;
+}
+$('#saveShare').onclick = async () => {
+  const f = recFile();
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f] }); saved = true; return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  downloadFile(f);
+};
+$('#saveFile').onclick = () => downloadFile(recFile());
+$('#saveDone').onclick = () => {
+  if (!saved && !confirm('This video has not been saved yet. Close anyway and lose it?')) return;
+  recBlob = null; $('#saveDlg').classList.add('hidden');
+};
+
 /* keyboard / Bluetooth remote */
 const run = {
   playPause: () => { showControls(); toggle(); },
+  record: () => toggleRecording(),
   faster: () => setSpeed(2),
   slower: () => setSpeed(-2),
   back: () => setY(y - lines(3)),
@@ -474,7 +637,7 @@ window.addEventListener('keydown', e => {
 });
 
 /* ---------------- boot ---------------- */
-refreshEditor(); renderKeys();
+refreshEditor(); renderKeys(); camUi();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
