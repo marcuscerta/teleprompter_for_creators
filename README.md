@@ -36,7 +36,7 @@ A simple, reliable teleprompter for the iPad. It is one static web page: no acco
 **Camera and recording**
 - Turn on **Camera behind text** to see yourself while you read. Front camera by default, back camera selectable, with adjustable brightness behind the text.
 - **Record** saves the camera and microphone. It can also start the scroll for you, and `R` on your remote starts and stops it.
-- Quality choices are Highest (asks the iPad for 4K at 30 fps), 1080p and 720p. The resolution the iPad actually provides is shown on screen when the camera starts.
+- Quality choices are 1080p (default, usually the widest view), 720p and 4K. Some webcams crop in when asked for 4K, so check the picture first. The resolution the camera is actually using is shown in the controls bar, and a camera picker appears when more than one camera is available.
 - When you stop, choose **Save to Photos / Share…** (pick **Save Video** in the share sheet) or **Download file**. The video stays in memory until you save it or dismiss the screen.
 - The preview is mirrored like a selfie, but the saved video is not. The recording does not include the script text.
 
