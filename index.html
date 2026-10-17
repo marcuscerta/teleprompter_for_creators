@@ -42,6 +42,7 @@ details.card>summary small{color:var(--muted);font-weight:400;font-size:13px}
 details.card .inner{padding:0 16px 16px;display:flex;flex-direction:column;gap:10px}
 .quick{display:flex;flex-direction:column;gap:6px}
 .chips button{min-width:0;padding:10px 6px}
+select{font:inherit;color:#fff;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:44px;width:100%}
 .note{margin:2px 0 0;color:var(--muted);font-size:13px;line-height:1.4}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .meta{color:var(--muted);font-size:14px;flex:1}
@@ -157,11 +158,12 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
               <button data-v="environment">Back</button>
             </div>
           </div>
+          <div class="field hidden" id="camDeviceField"><label>Camera device</label><select id="camDevice"></select></div>
           <div class="field"><label>Recording quality</label>
             <div class="seg" id="camQuality">
-              <button data-v="max">Highest</button>
               <button data-v="1080">1080p</button>
               <button data-v="720">720p</button>
+              <button data-v="max">4K</button>
             </div>
           </div>
           <div class="field"><label>Camera brightness behind text <b id="camOpacityV"></b></label><input id="camOpacity" type="range" min="10" max="100" step="5"></div>
@@ -169,7 +171,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
             <button id="camMirror">Mirror preview</button>
             <button id="recPlay">Record also starts scrolling</button>
           </div>
-          <p class="note">Record saves the camera and microphone only, not the script text. The preview is mirrored like a selfie; the saved video is not. Web recording quality is below the built-in Camera app.</p>
+          <p class="note">1080p gives the widest view on most cameras. 4K can crop in on some webcams, so check the picture before recording. Record saves the camera and microphone only, not the script text. The preview is mirrored like a selfie; the saved video is not. Web recording quality is below the built-in Camera app.</p>
         </div>
       </details>
 
@@ -224,6 +226,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       <button id="cBlank">Blank screen</button>
       <button id="cFull">Full screen</button>
       <button id="cHide">Hide controls</button>
+      <span class="val hidden" id="camInfo"></span>
     </div>
   </div>
 </div>
@@ -272,13 +275,14 @@ const DEFAULT_KEYS = {
 const DEFAULTS = {
   text: '', size: 64, width: 84, line: 1.4, speed: 30, guide: 30, countdown: 3,
   theme: 'dark', mirror: false, flip: false, showGuide: true, autohide: true,
-  camOn: false, camFacing: 'user', camQuality: 'max', camOpacity: 55, camMirror: true, recPlay: true,
+  camOn: false, camFacing: 'user', camQuality: '1080', camDevice: '', camOpacity: 55, camMirror: true, recPlay: true,
   keys: DEFAULT_KEYS,
 };
 let S;
 try { S = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('prompter.v1') || '{}')); }
 catch (e) { S = Object.assign({}, DEFAULTS); }
 S.keys = Object.assign({}, DEFAULT_KEYS, S.keys || {});
+if (!S.camQ2) { if (S.camQuality === 'max') S.camQuality = '1080'; S.camQ2 = true; }  // earlier default (4K) could crop the view on some webcams
 function save() { try { localStorage.setItem('prompter.v1', JSON.stringify(S)); } catch (e) {} }
 
 const THEMES = {
@@ -328,7 +332,7 @@ el.script.value = S.text;
 el.script.addEventListener('input', () => { S.text = el.script.value; save(); refreshEditor(); });
 document.querySelectorAll('#theme button').forEach(b => b.onclick = () => { S.theme = b.dataset.v; save(); refreshEditor(); });
 TOGGLES.forEach(k => $('#' + k).onclick = () => { S[k] = !S[k]; save(); refreshEditor(); });
-['camFacing', 'camQuality'].forEach(id => document.querySelectorAll('#' + id + ' button').forEach(b => b.onclick = () => { S[id] = b.dataset.v; save(); refreshEditor(); }));
+['camFacing', 'camQuality'].forEach(id => document.querySelectorAll('#' + id + ' button').forEach(b => b.onclick = () => { S[id] = b.dataset.v; if (id === 'camFacing') S.camDevice = ''; save(); refreshEditor(); }));
 $('#clearBtn').onclick = () => { if (!S.text || confirm('Clear the script?')) { el.script.value = S.text = ''; save(); refreshEditor(); } };
 $('#importBtn').onclick = () => $('#file').click();
 $('#file').onchange = async e => {
@@ -355,6 +359,7 @@ const keyId = e => e.code || e.key;
 
 /* ---------------- prompter engine ---------------- */
 let y = 0, maxY = 0, playing = false, last = 0, raf = 0, dragging = false;
+let camInfoText = '', camIsUser = true, camDevices = [];
 let camStream = null, recorder = null, recChunks = [], recStart = 0, recDur = 0, recTimer = 0, recBlob = null, recMime = '', saved = false;
 let countTimer = null, hideTimer = null, controlsOn = true, blanked = false, wake = null;
 
@@ -362,7 +367,7 @@ function applyLook(keepPos) {
   const t = THEMES[S.theme] || THEMES.dark, r = document.documentElement.style;
   r.setProperty('--bg', t.bg); r.setProperty('--fg', t.fg); r.setProperty('--dim', t.dim); r.setProperty('--tshadow', t.shadow);
   el.cam.style.opacity = S.camOpacity / 100;
-  el.cam.classList.toggle('mirrored', S.camFacing === 'user' && S.camMirror);
+  el.cam.classList.toggle('mirrored', camIsUser && S.camMirror);
   el.prompter.classList.toggle('cam', !!camStream);
   const ratio = maxY ? y / maxY : 0;
   el.text.style.fontSize = S.size + 'px';
@@ -509,7 +514,15 @@ $('#cBlank').onclick = () => { setBlank(true); };
 el.blank.addEventListener('pointerdown', () => setBlank(false));
 $('#cHide').onclick = hideControls;
 $('#cCam').onclick = () => { S.camOn = !S.camOn; save(); refreshEditor(); S.camOn ? startCamera() : (stopRecording(), stopCamera()); };
-$('#cCamFlip').onclick = () => { if (recorder) return flash('Stop recording first'); S.camFacing = S.camFacing === 'user' ? 'environment' : 'user'; save(); refreshEditor(); startCamera(); };
+$('#cCamFlip').onclick = () => {
+  if (recorder) return flash('Stop recording first');
+  if (camDevices.length > 1) {
+    const cur = S.camDevice || (camStream && camStream.getVideoTracks()[0].getSettings().deviceId);
+    const i = camDevices.findIndex(d => d.deviceId === cur);
+    S.camDevice = camDevices[(i + 1) % camDevices.length].deviceId;
+  } else S.camFacing = S.camFacing === 'user' ? 'environment' : 'user';
+  save(); refreshEditor(); startCamera();
+};
 $('#cRec').onclick = () => toggleRecording();
 $('#cFull').onclick = () => {
   const d = document.documentElement;
@@ -531,6 +544,8 @@ function camUi() {
   $('#cRec').textContent = recorder ? '■ Stop' : '● Record';
   el.cam.classList.toggle('hidden', !has);
   el.prompter.classList.toggle('cam', has);
+  $('#camInfo').classList.toggle('hidden', !has);
+  $('#camInfo').textContent = camInfoText;
 }
 async function startCamera() {
   stopCamera();
@@ -538,7 +553,8 @@ async function startCamera() {
   if (!S.camOn) return;
   if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { flash('Camera is not available in this browser'); return; }
   const q = QUALITY[S.camQuality] || QUALITY.max, portrait = innerHeight > innerWidth;
-  const video = { facingMode: { ideal: S.camFacing }, width: { ideal: portrait ? q.h : q.w }, height: { ideal: portrait ? q.w : q.h }, frameRate: { ideal: 30 } };
+  const video = { width: { ideal: portrait ? q.h : q.w }, height: { ideal: portrait ? q.w : q.h }, aspectRatio: { ideal: portrait ? 9 / 16 : 16 / 9 }, frameRate: { ideal: 30 }, resizeMode: { ideal: 'none' } };
+  if (S.camDevice) video.deviceId = { ideal: S.camDevice }; else video.facingMode = { ideal: S.camFacing };
   let noMic = false;
   try { camStream = await navigator.mediaDevices.getUserMedia({ video, audio: true }); }
   catch (e) {
@@ -551,12 +567,27 @@ async function startCamera() {
   const vt = camStream.getVideoTracks()[0];
   vt.addEventListener('ended', () => { stopRecording(); stopCamera(); flash('Camera stopped'); });
   const st = vt.getSettings();
-  camUi(); applyLook(true);
-  flash(`Camera ${st.width}×${st.height}${st.frameRate ? ' @' + Math.round(st.frameRate) : ''}${noMic ? ' · no microphone' : ''}`);
+  camIsUser = !st.facingMode || st.facingMode === 'user';
+  camInfoText = `${st.width}×${st.height}${st.frameRate ? ' @' + Math.round(st.frameRate) : ''}`;
+  camUi(); applyLook(true); fillDevices();
+  flash(`Camera ${camInfoText}${noMic ? ' · no microphone' : ''}`);
 }
+async function fillDevices() {
+  try {
+    camDevices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const sel = $('#camDevice');
+    sel.innerHTML = '';
+    sel.add(new Option('Automatic (front / back above)', ''));
+    camDevices.forEach((d, i) => sel.add(new Option(d.label || 'Camera ' + (i + 1), d.deviceId)));
+    sel.value = S.camDevice;
+    if (sel.value !== S.camDevice) { S.camDevice = ''; sel.value = ''; }
+    $('#camDeviceField').classList.toggle('hidden', camDevices.length < 2);
+  } catch (e) {}
+}
+$('#camDevice').onchange = e => { S.camDevice = e.target.value; save(); };
 function stopCamera() {
   if (camStream) camStream.getTracks().forEach(t => t.stop());
-  camStream = null; el.cam.srcObject = null; camUi();
+  camStream = null; el.cam.srcObject = null; camInfoText = ''; camUi();
 }
 function pickMime() {
   const c = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
