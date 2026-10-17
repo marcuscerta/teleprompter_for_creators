@@ -25,15 +25,27 @@ button.on{background:var(--accent);color:#04121f;border-color:transparent}
 .hidden{display:none !important}
 
 /* ---------- editor ---------- */
-#editor{min-height:100%;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
-#editor header{display:flex;align-items:center;gap:12px}
-#editor h1{margin:0;font-size:22px;flex:1}
-#script{width:100%;min-height:42vh;flex:1;resize:vertical;background:var(--panel);color:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;font-size:19px;line-height:1.5;font-family:inherit}
+#editor{height:100dvh;padding:max(12px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+#editor header{display:flex;align-items:center;gap:12px;flex:none}
+#editor h1{margin:0;font-size:20px;flex:1}
+.layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px}
+.scriptPane{display:flex;flex-direction:column;gap:10px;min-height:0}
+#script{width:100%;flex:1;min-height:0;resize:none;background:var(--panel);color:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;font-size:19px;line-height:1.5;font-family:inherit}
+.side{display:flex;flex-direction:column;gap:10px;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch}
+@media (max-width:900px){#editor{height:auto;min-height:100dvh}.layout{display:flex;flex-direction:column}#script{min-height:34vh;resize:vertical}.side{overflow:visible}}
+details.card{padding:0}
+details.card>summary{list-style:none;cursor:pointer;padding:12px 16px;min-height:48px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:16px}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::after{content:"\203A";margin-left:auto;color:var(--muted);font-size:24px;transition:transform .2s}
+details.card[open]>summary::after{transform:rotate(90deg)}
+details.card>summary small{color:var(--muted);font-weight:400;font-size:13px}
+details.card .inner{padding:0 16px 16px;display:flex;flex-direction:column;gap:10px}
+.quick{display:flex;flex-direction:column;gap:6px}
+.chips button{min-width:0;padding:10px 6px}
+.note{margin:2px 0 0;color:var(--muted);font-size:13px;line-height:1.4}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .meta{color:var(--muted);font-size:14px;flex:1}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
-.card h2{margin:0 0 10px;font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
 .field{display:flex;flex-direction:column;gap:6px}
 .field label{display:flex;justify-content:space-between;font-size:15px}
 .field label b{color:var(--accent);font-weight:600}
@@ -94,79 +106,82 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
     <button id="startBtn" class="primary">▶ Start</button>
   </header>
 
-  <textarea id="script" placeholder="Paste or type your script here…" spellcheck="false" autocapitalize="sentences"></textarea>
-  <div class="row">
-    <span class="meta" id="count"></span>
-    <button id="importBtn">Import .txt</button>
-    <button id="clearBtn">Clear</button>
-    <input id="file" type="file" accept=".txt,text/plain" class="hidden">
-  </div>
+  <div class="layout">
+    <section class="scriptPane">
+      <textarea id="script" placeholder="Paste or type your script here…" spellcheck="false" autocapitalize="sentences"></textarea>
+      <div class="row">
+        <span class="meta" id="count"></span>
+        <button id="importBtn">Import .txt</button>
+        <button id="clearBtn">Clear</button>
+        <input id="file" type="file" accept=".txt,text/plain" class="hidden">
+      </div>
+    </section>
 
-  <div class="grid">
-    <div class="card">
-      <h2>Text</h2>
-      <div class="field"><label>Font size <b id="sizeV"></b></label><input id="size" type="range" min="24" max="160" step="2"></div>
-      <div class="field"><label>Text width <b id="widthV"></b></label><input id="width" type="range" min="40" max="100" step="1"></div>
-      <div class="field"><label>Line spacing <b id="lineV"></b></label><input id="line" type="range" min="1" max="2.2" step="0.05"></div>
-      <div class="field"><label>Theme</label>
-        <div class="seg" id="theme">
-          <button data-v="dark">White on black</button>
-          <button data-v="amber">Yellow on black</button>
-          <button data-v="light">Black on white</button>
+    <aside class="side">
+      <div class="card quick">
+        <div class="field"><label>Speed <b id="speedV"></b></label><input id="speed" type="range" min="1" max="100" step="1"></div>
+        <div class="field"><label>Font size <b id="sizeV"></b></label><input id="size" type="range" min="24" max="160" step="2"></div>
+        <div class="seg chips">
+          <button id="mirror">Mirror ↔</button>
+          <button id="flip">Flip ↕</button>
+          <button id="camOn">Camera</button>
         </div>
+        <p class="note">Mirror is for beam-splitter glass like the Neewer X11. Camera shows you behind the text.</p>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Scrolling</h2>
-      <div class="field"><label>Speed <b id="speedV"></b></label><input id="speed" type="range" min="1" max="100" step="1"></div>
-      <div class="field"><label>Reading line position <b id="guideV"></b></label><input id="guide" type="range" min="5" max="70" step="1"></div>
-      <div class="field"><label>Countdown before start <b id="countdownV"></b></label><input id="countdown" type="range" min="0" max="10" step="1"></div>
-      <div class="seg" style="margin-top:8px">
-        <button id="showGuide">Reading line</button>
-        <button id="autohide">Auto-hide controls</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Teleprompter glass</h2>
-      <div class="seg">
-        <button id="mirror">Mirror text ↔</button>
-        <button id="flip">Flip upside-down ↕</button>
-      </div>
-      <p class="hint">Turn on <b>Mirror</b> for a beam-splitter teleprompter like the Neewer X11 so the text reads correctly in the glass. You can also toggle it live from the on-screen controls.</p>
-    </div>
-
-    <div class="card">
-      <h2>Camera &amp; recording</h2>
-      <div class="seg">
-        <button id="camOn">Camera behind text</button>
-        <button id="camMirror">Mirror preview</button>
-      </div>
-      <div class="field" style="margin-top:10px"><label>Camera</label>
-        <div class="seg" id="camFacing">
-          <button data-v="user">Front</button>
-          <button data-v="environment">Back</button>
+      <details class="card">
+        <summary>Text &amp; reading line</summary>
+        <div class="inner">
+          <div class="field"><label>Text width <b id="widthV"></b></label><input id="width" type="range" min="40" max="100" step="1"></div>
+          <div class="field"><label>Line spacing <b id="lineV"></b></label><input id="line" type="range" min="1" max="2.2" step="0.05"></div>
+          <div class="field"><label>Reading line position <b id="guideV"></b></label><input id="guide" type="range" min="5" max="70" step="1"></div>
+          <div class="field"><label>Countdown before start <b id="countdownV"></b></label><input id="countdown" type="range" min="0" max="10" step="1"></div>
+          <div class="seg" id="theme">
+            <button data-v="dark">White on black</button>
+            <button data-v="amber">Yellow on black</button>
+            <button data-v="light">Black on white</button>
+          </div>
+          <div class="seg">
+            <button id="showGuide">Reading line</button>
+            <button id="autohide">Auto-hide controls</button>
+          </div>
         </div>
-      </div>
-      <div class="field" style="margin-top:6px"><label>Recording quality</label>
-        <div class="seg" id="camQuality">
-          <button data-v="max">Highest</button>
-          <button data-v="1080">1080p</button>
-          <button data-v="720">720p</button>
-        </div>
-      </div>
-      <div class="field" style="margin-top:6px"><label>Camera brightness behind text <b id="camOpacityV"></b></label><input id="camOpacity" type="range" min="10" max="100" step="5"></div>
-      <div class="seg" style="margin-top:8px"><button id="recPlay">Record also starts scrolling</button></div>
-      <p class="hint">Shows your camera behind the script so you can see yourself while reading. <b>Record</b> saves the camera and microphone only (not the text). The preview is mirrored like a selfie, but the saved video is not. Safari asks for camera and microphone permission the first time. Recording quality in a web app is below the built-in Camera app.</p>
-    </div>
+      </details>
 
-    <div class="card">
-      <h2>Bluetooth remote (Satechi R2)</h2>
-      <div class="keys" id="keys"></div>
-      <p class="hint">Pair the remote in iPad Settings → Bluetooth. Tap <b>Learn</b>, then press the button on your remote you want for that action. Anything it sends as a normal keyboard key works.</p>
-      <div class="row" style="margin-top:8px"><button id="resetKeys">Reset to defaults</button></div>
-    </div>
+      <details class="card">
+        <summary>Camera &amp; recording</summary>
+        <div class="inner">
+          <div class="field"><label>Camera</label>
+            <div class="seg" id="camFacing">
+              <button data-v="user">Front</button>
+              <button data-v="environment">Back</button>
+            </div>
+          </div>
+          <div class="field"><label>Recording quality</label>
+            <div class="seg" id="camQuality">
+              <button data-v="max">Highest</button>
+              <button data-v="1080">1080p</button>
+              <button data-v="720">720p</button>
+            </div>
+          </div>
+          <div class="field"><label>Camera brightness behind text <b id="camOpacityV"></b></label><input id="camOpacity" type="range" min="10" max="100" step="5"></div>
+          <div class="seg">
+            <button id="camMirror">Mirror preview</button>
+            <button id="recPlay">Record also starts scrolling</button>
+          </div>
+          <p class="note">Record saves the camera and microphone only, not the script text. The preview is mirrored like a selfie; the saved video is not. Web recording quality is below the built-in Camera app.</p>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary>Bluetooth remote <small>set up once</small></summary>
+        <div class="inner">
+          <div class="keys" id="keys"></div>
+          <p class="note">Pair the remote in iPad Settings → Bluetooth. Tap <b>Learn</b>, then press the button on your remote you want for that action.</p>
+          <div class="row"><button id="resetKeys">Reset to defaults</button></div>
+        </div>
+      </details>
+    </aside>
   </div>
 </div>
 
