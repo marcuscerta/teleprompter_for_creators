@@ -639,6 +639,11 @@ window.addEventListener('keydown', e => {
 /* ---------------- boot ---------------- */
 refreshEditor(); renderKeys(); camUi();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // a new version took over: reload once, but never in the middle of reading or recording
+    if (hadController && !inPrompter() && !recorder && $('#saveDlg').classList.contains('hidden')) location.reload();
+  });
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 // test hook
