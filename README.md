@@ -8,7 +8,7 @@ A simple, reliable teleprompter for the iPad. It is one static web page: no acco
 
 **Reading**
 - Paste a script or import a `.txt` file. One script at a time, saved on the device.
-- Smooth auto-scroll with adjustable speed, font size, text width and line spacing.
+- Smooth auto-scroll with adjustable speed, font size, text width and line spacing. Speed, size, text width, and the reading line's position and height can all be changed live on the reading screen, before or during playback.
 - Reading-line guide, a countdown before it starts, and a "time left" estimate.
 - Three themes: white on black, yellow on black, black on white.
 - Tap the text to play or pause, drag to scrub, and use the on-screen buttons to jump back or forward a few lines.
@@ -34,7 +34,7 @@ A simple, reliable teleprompter for the iPad. It is one static web page: no acco
   | Exit to script | Esc |
 
 **Camera and recording**
-- Turn on **Camera behind text** to see yourself while you read. Front camera by default, back camera selectable, with adjustable brightness behind the text.
+- Turn on **Camera behind text** to see yourself while you read. It works with any camera the browser can see: a built-in or USB webcam, a capture card, or a virtual camera app such as Camo. Use **Camera device** under Camera & recording, or **Switch camera** on the reading screen. (Network streams such as RTSP or NDI are not supported by browsers.) Front camera by default, back camera selectable, with adjustable brightness behind the text.
 - **Record** saves the camera and microphone. It can also start the scroll for you, and `R` on your remote starts and stops it.
 - Quality choices are 1080p (default, usually the widest view), 720p and 4K. Some webcams crop in when asked for 4K, so check the picture first. The resolution the camera is actually using is shown in the controls bar, and a camera picker appears when more than one camera is available.
 - When you stop, choose **Save to Photos / Share…** (pick **Save Video** in the share sheet) or **Download file**. The video stays in memory until you save it or dismiss the screen.
