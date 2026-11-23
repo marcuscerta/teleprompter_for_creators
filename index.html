@@ -136,6 +136,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
           <div class="field"><label>Text width <b id="widthV"></b></label><input id="width" type="range" min="40" max="100" step="1"></div>
           <div class="field"><label>Line spacing <b id="lineV"></b></label><input id="line" type="range" min="1" max="2.2" step="0.05"></div>
           <div class="field"><label>Reading line position <b id="guideV"></b></label><input id="guide" type="range" min="5" max="70" step="1"></div>
+          <div class="field"><label>Reading line height <b id="bandLinesV"></b></label><input id="bandLines" type="range" min="1" max="5" step="0.5"></div>
           <div class="field"><label>Countdown before start <b id="countdownV"></b></label><input id="countdown" type="range" min="0" max="10" step="1"></div>
           <div class="seg" id="theme">
             <button data-v="dark">White on black</button>
@@ -273,7 +274,7 @@ const DEFAULT_KEYS = {
   record:    ['KeyR'],
 };
 const DEFAULTS = {
-  text: '', size: 64, width: 84, line: 1.4, speed: 30, guide: 30, countdown: 3,
+  text: '', size: 64, width: 84, line: 1.4, speed: 30, guide: 30, bandLines: 1, countdown: 3,
   theme: 'dark', mirror: false, flip: false, showGuide: true, autohide: true,
   camOn: false, camFacing: 'user', camQuality: '1080', camDevice: '', camOpacity: 55, camMirror: true, recPlay: true,
   keys: DEFAULT_KEYS,
@@ -308,6 +309,7 @@ const sliders = {
   line:      v => (+v).toFixed(2),
   speed:     v => v,
   guide:     v => v + '%',
+  bandLines: v => (+v === 1 ? '1 line' : (+v) + ' lines'),
   countdown: v => v == 0 ? 'off' : v + ' s',
   camOpacity: v => v + '%',
 };
@@ -378,7 +380,7 @@ function applyLook(keepPos) {
   const vh = el.viewport.clientHeight, g = vh * S.guide / 100, lh = S.size * S.line;
   el.content.style.paddingTop = g + 'px';
   el.content.style.paddingBottom = (vh - g) + 'px';
-  el.band.style.top = g + 'px'; el.band.style.height = lh + 'px';
+  el.band.style.top = g + 'px'; el.band.style.height = (lh * S.bandLines) + 'px';
   el.dim.style.height = g + 'px';
   maxY = Math.max(0, el.content.offsetHeight - vh);
   setY(keepPos ? ratio * maxY : y);
