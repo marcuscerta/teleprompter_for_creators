@@ -42,6 +42,12 @@ details.card>summary small{color:var(--muted);font-weight:400;font-size:13px}
 details.card .inner{padding:0 16px 16px;display:flex;flex-direction:column;gap:10px}
 .quick{display:flex;flex-direction:column;gap:6px}
 .chips button{min-width:0;padding:10px 6px}
+#camPanel{position:absolute;top:56px;right:16px;z-index:10;width:min(400px,92vw);max-height:calc(100% - 300px);overflow-y:auto;background:rgba(18,20,24,.96);border:1px solid var(--line);border-radius:16px;padding:12px 14px;color:#fff;display:flex;flex-direction:column;gap:10px}
+#camPanel .cp-head{display:flex;align-items:center;gap:8px}
+#camPanel .cp-head b{flex:1}
+#camPanel button{min-height:38px;padding:6px 12px;font-size:15px}
+#camPanel .field label{font-size:14px}
+#camPanel .note{margin:0}
 select{font:inherit;color:#fff;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:44px;width:100%}
 .note{margin:2px 0 0;color:var(--muted);font-size:13px;line-height:1.4}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -202,6 +208,10 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
   <div id="status"></div>
   <div id="countOverlay" class="hidden"></div>
   <div id="blank" class="hidden"></div>
+  <div id="camPanel" class="hidden">
+    <div class="cp-head"><b>Camera settings</b><button id="cpReset">Reset</button><button id="cpClose">✕</button></div>
+    <div id="cpBody"></div>
+  </div>
 
   <div id="controls">
     <div class="bar">
@@ -235,6 +245,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       <button id="cFlip">Flip ↕</button>
       <button id="cCam">Camera</button>
       <button id="cCamFlip" class="hidden">Switch camera</button>
+      <button id="cCamSet" class="hidden">Camera settings</button>
       <button id="cRec" class="rec hidden">● Record</button>
       <button id="cBlank">Blank screen</button>
       <button id="cFull">Full screen</button>
@@ -430,6 +441,7 @@ function tick(t) {
   raf = requestAnimationFrame(tick);
 }
 function begin() {
+  $('#camPanel').classList.add('hidden');
   cancelCountdown();
   if (y >= maxY && maxY > 0) setY(0);
   playing = true; last = 0; el.play.textContent = '❚❚ Pause';
@@ -587,6 +599,8 @@ function camUi() {
   const has = !!camStream;
   $('#cCam').classList.toggle('on', S.camOn);
   $('#cCamFlip').classList.toggle('hidden', !has);
+  $('#cCamSet').classList.toggle('hidden', !has);
+  if (!has) $('#camPanel').classList.add('hidden');
   $('#cRec').classList.toggle('hidden', !has);
   $('#cRec').classList.toggle('on', !!recorder);
   $('#cRec').textContent = recorder ? '■ Stop' : '● Record';
@@ -619,11 +633,13 @@ async function startCamera() {
   const q = QUALITY[S.camQuality] || QUALITY.max, portrait = innerHeight > innerWidth;
   const video = { width: { ideal: portrait ? q.h : q.w }, height: { ideal: portrait ? q.w : q.h }, aspectRatio: { ideal: portrait ? 9 / 16 : 16 / 9 }, frameRate: { ideal: 30 }, resizeMode: { ideal: 'none' } };
   if (S.camDevice) video.deviceId = { ideal: S.camDevice }; else video.facingMode = { ideal: S.camFacing };
+  if (S.camPTZ) { video.pan = true; video.tilt = true; video.zoom = true; }  // asks Chrome for zoom/pan control of the webcam
   let noMic = false;
   try { camStream = await navigator.mediaDevices.getUserMedia({ video, audio: true }); }
   catch (e) {
     try { camStream = await navigator.mediaDevices.getUserMedia({ video }); noMic = true; }
     catch (e2) {
+      if (S.camPTZ && e2.name === 'OverconstrainedError') { S.camPTZ = false; save(); return startCamera(); }
       if (S.camDevice && (e2.name === 'NotFoundError' || e2.name === 'OverconstrainedError')) { S.camDevice = ''; save(); return startCamera(); }  // saved camera unplugged: fall back to automatic
       camError(e2); camUi(); return;
     }
@@ -637,7 +653,7 @@ async function startCamera() {
   camIsUser = !st.facingMode || st.facingMode === 'user';
   const nm = (vt.label || '').replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '');
   camInfoText = `${nm ? (nm.length > 28 ? nm.slice(0, 27) + '…' : nm) + ' · ' : ''}${st.width}×${st.height}${st.frameRate ? ' @' + Math.round(st.frameRate) : ''}`;
-  camUi(); applyLook(true); fillDevices();
+  camUi(); applyLook(true); fillDevices(); initAdjust(vt, st);
   flash(`Camera ${camInfoText}${noMic ? ' · no microphone' : ''}`);
 }
 async function fillDevices() {
@@ -719,6 +735,96 @@ $('#saveDone').onclick = () => {
   recBlob = null; $('#saveDlg').classList.add('hidden');
 };
 
+/* ---------------- camera hardware settings (zoom, focus, exposure, white balance ...) ---------------- */
+const CAM_NUM = [['zoom', 'Zoom'], ['pan', 'Pan'], ['tilt', 'Tilt'], ['brightness', 'Brightness'], ['contrast', 'Contrast'], ['saturation', 'Saturation'], ['sharpness', 'Sharpness'],
+  ['exposureCompensation', 'Exposure compensation'], ['exposureTime', 'Exposure time'], ['iso', 'ISO'], ['colorTemperature', 'White balance temperature'], ['focusDistance', 'Focus distance']];
+const CAM_MODE = [['focusMode', 'Focus'], ['exposureMode', 'Exposure'], ['whiteBalanceMode', 'White balance']];
+const CAM_NEEDS = { colorTemperature: ['whiteBalanceMode', 'manual'], exposureTime: ['exposureMode', 'manual'], iso: ['exposureMode', 'manual'], focusDistance: ['focusMode', 'manual'] };
+let camCaps = {}, camDefaults = {}, camKey = '', camSaveT = 0;
+const vtrack = () => camStream && camStream.getVideoTracks()[0];
+async function applyAdj(obj) {
+  const vt = vtrack(); if (!vt) return;
+  try { await vt.applyConstraints({ advanced: [obj] }); } catch (e) { flash('This camera did not accept that setting', 3000); }
+}
+function saveAdj(obj) {
+  S.camAdj = S.camAdj || {}; S.camAdj[camKey] = Object.assign(S.camAdj[camKey] || {}, obj);
+  clearTimeout(camSaveT); camSaveT = setTimeout(save, 300);
+}
+async function initAdjust(vt, st) {
+  camCaps = vt.getCapabilities ? vt.getCapabilities() : {};
+  camKey = vt.label || st.deviceId || 'camera';
+  camDefaults = {};
+  const cur = vt.getSettings();
+  for (const [k] of CAM_NUM.concat(CAM_MODE)) if (k in camCaps && cur[k] !== undefined) camDefaults[k] = cur[k];
+  const saved = (S.camAdj && S.camAdj[camKey]) || {};
+  for (const [k] of CAM_MODE) if (k in saved && camCaps[k] && camCaps[k].includes(saved[k])) await applyAdj({ [k]: saved[k] });
+  for (const [k] of CAM_NUM) if (k in saved && camCaps[k] && camCaps[k].max !== undefined) {
+    const obj = { [k]: Math.min(camCaps[k].max, Math.max(camCaps[k].min, saved[k])) };
+    const need = CAM_NEEDS[k]; if (need && saved[need[0]] === need[1]) obj[need[0]] = need[1];
+    await applyAdj(obj);
+  }
+  buildCamPanel();
+}
+function buildCamPanel() {
+  const body = $('#cpBody'); body.innerHTML = '';
+  const vt = vtrack(); if (!vt) return;
+  const cur = vt.getSettings();
+  let any = false;
+  for (const [k, label] of CAM_MODE) {
+    const opts = camCaps[k]; if (!Array.isArray(opts) || opts.length < 2) continue;
+    any = true;
+    const f = document.createElement('div'); f.className = 'field';
+    f.innerHTML = `<label>${label}</label>`;
+    const seg = document.createElement('div'); seg.className = 'seg';
+    opts.forEach(v => {
+      const b = document.createElement('button'); b.textContent = v.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
+      b.classList.toggle('on', cur[k] === v);
+      b.onclick = async () => { await applyAdj({ [k]: v }); saveAdj({ [k]: v }); seg.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); };
+      seg.appendChild(b);
+    });
+    f.appendChild(seg); body.appendChild(f);
+  }
+  for (const [k, label] of CAM_NUM) {
+    const c = camCaps[k]; if (!c || c.min === undefined || c.max === undefined || c.max <= c.min) continue;
+    any = true;
+    const step = c.step || (c.max - c.min) / 100;
+    const f = document.createElement('div'); f.className = 'field';
+    const val = cur[k] !== undefined ? cur[k] : c.min;
+    f.innerHTML = `<label>${label} <b></b></label><input type="range" min="${c.min}" max="${c.max}" step="${step}">`;
+    const inp = f.querySelector('input'), out = f.querySelector('b');
+    inp.value = val; out.textContent = (+val).toFixed(step < 1 ? 1 : 0);
+    let last = 0;
+    const push = () => {
+      const v = +inp.value, obj = { [k]: v };
+      const need = CAM_NEEDS[k]; if (need && Array.isArray(camCaps[need[0]]) && camCaps[need[0]].includes(need[1])) obj[need[0]] = need[1];
+      out.textContent = v.toFixed(step < 1 ? 1 : 0);
+      applyAdj(obj); saveAdj(obj);
+    };
+    inp.addEventListener('input', () => { const t = Date.now(); if (t - last > 80) { last = t; push(); } });
+    inp.addEventListener('change', push);
+    body.appendChild(f);
+  }
+  const chrome = /Chrome|Edg/.test(navigator.userAgent);
+  if (!('zoom' in camCaps) && chrome && !S.camPTZ) {
+    const f = document.createElement('div'); f.className = 'field';
+    f.innerHTML = '<p class="note">Zoom and pan need an extra permission from Chrome.</p>';
+    const b = document.createElement('button'); b.textContent = 'Enable zoom & pan';
+    b.onclick = () => { S.camPTZ = true; save(); startCamera(); };
+    f.appendChild(b); body.appendChild(f);
+  }
+  if (!any && (S.camPTZ || !chrome)) {
+    body.innerHTML = '<p class="note">This camera does not share any adjustable settings with the browser. Use the camera\'s own app (for example Logi Tune, or Camo\'s settings) for zoom, focus and exposure.</p>';
+  }
+}
+$('#cCamSet').onclick = () => { $('#camPanel').classList.toggle('hidden'); showControls(); };
+$('#cpClose').onclick = () => $('#camPanel').classList.add('hidden');
+$('#cpReset').onclick = async () => {
+  if (S.camAdj) delete S.camAdj[camKey]; save();
+  for (const [k] of CAM_MODE) if (k in camDefaults) await applyAdj({ [k]: camDefaults[k] });
+  for (const [k] of CAM_NUM) if (k in camDefaults) await applyAdj({ [k]: camDefaults[k] });
+  buildCamPanel();
+};
+
 /* keyboard / Bluetooth remote */
 const run = {
   playPause: () => { showControls(); toggle(); },
@@ -736,7 +842,7 @@ const run = {
   restart: () => { setY(0); flash('Top'); },
   blank: () => setBlank(!blanked),
   controls: () => controlsOn ? hideControls() : showControls(),
-  exit: () => { if (blanked) setBlank(false); else closePrompter(); },
+  exit: () => { if (blanked) setBlank(false); else if (!$('#camPanel').classList.contains('hidden')) $('#camPanel').classList.add('hidden'); else closePrompter(); },
 };
 function matches(list, e) {
   return list.includes(e.code) || list.includes(e.key) || (e.key === ' ' && list.includes('Space'));
