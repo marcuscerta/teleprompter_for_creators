@@ -226,6 +226,9 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       <div class="sp">Reading line height
         <button id="cBandDn" title="Shorter reading line">−</button><span class="val" id="cBandV"></span><button id="cBandUp" title="Taller reading line">+</button>
       </div>
+      <div class="sp">Text width
+        <button id="cWDn" title="Narrower text">−</button><span class="val" id="cWV"></span><button id="cWUp" title="Wider text">+</button>
+      </div>
     </div>
     <div class="bar">
       <button id="cMirror">Mirror ↔</button>
@@ -265,6 +268,8 @@ const ACTIONS = [
   ['lineDown',  'Reading line down'],
   ['bandUp',    'Reading line taller'],
   ['bandDown',  'Reading line shorter'],
+  ['widthUp',   'Text wider'],
+  ['widthDown', 'Text narrower'],
   ['faster',    'Faster'],
   ['slower',    'Slower'],
   ['back',      'Back a few lines'],
@@ -289,6 +294,8 @@ const DEFAULT_KEYS = {
   lineDown:  [],
   bandUp:    [],
   bandDown:  [],
+  widthUp:   [],
+  widthDown: [],
 };
 const DEFAULTS = {
   text: '', size: 64, width: 84, line: 1.4, speed: 30, guide: 30, bandLines: 1, countdown: 3,
@@ -401,7 +408,7 @@ function applyLook(keepPos) {
   el.dim.style.height = g + 'px';
   maxY = Math.max(0, el.content.offsetHeight - vh);
   setY(keepPos ? ratio * maxY : y);
-  $('#cSpeedV').textContent = S.speed; $('#cSizeV').textContent = S.size; $('#cLineV').textContent = S.guide + '%'; $('#cBandV').textContent = bandText();
+  $('#cSpeedV').textContent = S.speed; $('#cSizeV').textContent = S.size; $('#cLineV').textContent = S.guide + '%'; $('#cBandV').textContent = bandText(); $('#cWV').textContent = S.width + '%';
   $('#cMirror').classList.toggle('on', S.mirror); $('#cFlip').classList.toggle('on', S.flip);
 }
 function setY(v) {
@@ -455,6 +462,11 @@ const lines = n => S.size * S.line * n;
 const flipSign = () => S.flip ? -1 : 1;
 function setSpeed(d) { S.speed = Math.max(1, Math.min(100, S.speed + d)); save(); $('#speed').value = S.speed; $('#speedV').textContent = S.speed; $('#cSpeedV').textContent = S.speed; flash('Speed ' + S.speed); updateStatus(); }
 const bandText = () => (S.bandLines === 1 ? '1 line' : S.bandLines + ' lines');
+function setWidth(d) {
+  S.width = Math.max(40, Math.min(100, S.width + d)); save();
+  $('#width').value = S.width; $('#widthV').textContent = S.width + '%';
+  applyLook(true);
+}
 function setBand(d) {
   S.bandLines = Math.max(1, Math.min(5, S.bandLines + d)); save();
   $('#bandLines').value = S.bandLines; $('#bandLinesV').textContent = bandText();
@@ -536,6 +548,8 @@ $('#cFwd').onclick = () => setY(y + lines(3));
 $('#cPlay').onclick = toggle;
 $('#cSlow').onclick = () => setSpeed(-2);
 $('#cFast').onclick = () => setSpeed(2);
+$('#cWUp').onclick = () => setWidth(4);
+$('#cWDn').onclick = () => setWidth(-4);
 $('#cBandUp').onclick = () => setBand(0.5);
 $('#cBandDn').onclick = () => setBand(-0.5);
 $('#cLineUp').onclick = () => setGuide(-3);
@@ -602,7 +616,8 @@ async function startCamera() {
   vt.addEventListener('ended', () => { stopRecording(); stopCamera(); flash('Camera stopped'); });
   const st = vt.getSettings();
   camIsUser = !st.facingMode || st.facingMode === 'user';
-  camInfoText = `${st.width}×${st.height}${st.frameRate ? ' @' + Math.round(st.frameRate) : ''}`;
+  const nm = (vt.label || '').replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '');
+  camInfoText = `${nm ? (nm.length > 28 ? nm.slice(0, 27) + '…' : nm) + ' · ' : ''}${st.width}×${st.height}${st.frameRate ? ' @' + Math.round(st.frameRate) : ''}`;
   camUi(); applyLook(true); fillDevices();
   flash(`Camera ${camInfoText}${noMic ? ' · no microphone' : ''}`);
 }
@@ -693,6 +708,8 @@ const run = {
   lineDown: () => setGuide(3),
   bandUp: () => setBand(0.5),
   bandDown: () => setBand(-0.5),
+  widthUp: () => setWidth(4),
+  widthDown: () => setWidth(-4),
   faster: () => setSpeed(2),
   slower: () => setSpeed(-2),
   back: () => setY(y - lines(3)),
