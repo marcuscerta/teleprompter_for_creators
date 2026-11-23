@@ -48,6 +48,11 @@ details.card .inner{padding:0 16px 16px;display:flex;flex-direction:column;gap:1
 #camPanel button{min-height:38px;padding:6px 12px;font-size:15px}
 #camPanel .field label{font-size:14px}
 #camPanel .note{margin:0}
+#micMeter{display:inline-flex;align-items:center;gap:6px;color:#fff;font-size:14px}
+#micMeter b{display:block;width:90px;height:10px;background:#333;border-radius:5px;overflow:hidden}
+#micMeter i{display:block;height:100%;width:0;background:#4ade80}
+#micMeter.nomic{color:#ff6b6b}
+#saveWarn{color:#ff8a8a !important;font-weight:600}
 select{font:inherit;color:#fff;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:44px;width:100%}
 .note{margin:2px 0 0;color:var(--muted);font-size:13px;line-height:1.4}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -166,6 +171,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
             </div>
           </div>
           <div class="field hidden" id="camDeviceField"><label>Camera device</label><select id="camDevice"></select></div>
+          <div class="field hidden" id="micDeviceField"><label>Microphone</label><select id="micDevice"></select></div>
           <div class="field"><label>Recording quality</label>
             <div class="seg" id="camQuality">
               <button data-v="1080">1080p</button>
@@ -251,6 +257,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       <button id="cFull">Full screen</button>
       <button id="cHide">Hide controls</button>
       <span class="val hidden" id="camInfo"></span>
+      <span id="micMeter" class="hidden" title="Microphone level: it should move when you talk"><span id="micMeterTxt">Mic</span><b><i></i></b></span>
     </div>
   </div>
 </div>
@@ -259,6 +266,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
   <div class="box">
     <h3>Recording finished</h3>
     <p id="saveInfo"></p>
+    <p id="saveWarn" class="hidden"></p>
     <button id="saveShare" class="primary">Save to Photos / Share…</button>
     <button id="saveFile">Download file</button>
     <button id="saveDone">Done</button>
@@ -635,9 +643,12 @@ async function startCamera() {
   if (S.camDevice) video.deviceId = { ideal: S.camDevice }; else video.facingMode = { ideal: S.camFacing };
   if (S.camPTZ) { video.pan = true; video.tilt = true; video.zoom = true; }  // asks Chrome for zoom/pan control of the webcam
   let noMic = false;
-  try { camStream = await navigator.mediaDevices.getUserMedia({ video, audio: true }); }
+  const getMedia = a => navigator.mediaDevices.getUserMedia(a ? { video, audio: a } : { video });
+  try { camStream = await getMedia(S.micDevice ? { deviceId: { ideal: S.micDevice } } : true); }
   catch (e) {
-    try { camStream = await navigator.mediaDevices.getUserMedia({ video }); noMic = true; }
+    let got = false;
+    if (S.micDevice) { try { camStream = await getMedia(true); S.micDevice = ''; save(); got = true; } catch (e1) {} }  // saved microphone unplugged: use the default
+    if (!got) try { camStream = await getMedia(null); noMic = true; }
     catch (e2) {
       if (S.camPTZ && e2.name === 'OverconstrainedError') { S.camPTZ = false; save(); return startCamera(); }
       if (S.camDevice && (e2.name === 'NotFoundError' || e2.name === 'OverconstrainedError')) { S.camDevice = ''; save(); return startCamera(); }  // saved camera unplugged: fall back to automatic
@@ -654,7 +665,9 @@ async function startCamera() {
   const nm = (vt.label || '').replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '');
   camInfoText = `${nm ? (nm.length > 28 ? nm.slice(0, 27) + '…' : nm) + ' · ' : ''}${st.width}×${st.height}${st.frameRate ? ' @' + Math.round(st.frameRate) : ''}`;
   camUi(); applyLook(true); fillDevices(); initAdjust(vt, st);
-  flash(`Camera ${camInfoText}${noMic ? ' · no microphone' : ''}`);
+  startMeter();
+  if (noMic) flash('Camera is on, but the microphone is blocked or missing, so recordings will have no sound.', 8000);
+  else flash(`Camera ${camInfoText}`);
 }
 async function fillDevices() {
   try {
@@ -666,10 +679,50 @@ async function fillDevices() {
     sel.value = S.camDevice;
     if (sel.value !== S.camDevice) { S.camDevice = ''; sel.value = ''; }
     $('#camDeviceField').classList.toggle('hidden', camDevices.length < 2);
+    const mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications');
+    const msel = $('#micDevice');
+    msel.innerHTML = '';
+    msel.add(new Option('Automatic (system default)', ''));
+    mics.forEach((d, i) => msel.add(new Option(d.label || 'Microphone ' + (i + 1), d.deviceId)));
+    msel.value = S.micDevice;
+    if (msel.value !== S.micDevice) { S.micDevice = ''; msel.value = ''; }
+    $('#micDeviceField').classList.toggle('hidden', mics.length < 2);
   } catch (e) {}
 }
 $('#camDevice').onchange = e => { S.camDevice = e.target.value; save(); };
+$('#micDevice').onchange = e => { S.micDevice = e.target.value; save(); };
+
+/* live microphone level, so you can see sound is arriving before and while recording */
+let audioCtx = null, meterT = 0, recPeak = 0, recHadAudio = false;
+function startMeter() {
+  stopMeter();
+  const m = $('#micMeter');
+  const at = camStream && camStream.getAudioTracks()[0];
+  m.classList.remove('hidden');
+  if (!at) { m.classList.add('nomic'); $('#micMeterTxt').textContent = 'No mic'; return; }
+  m.classList.remove('nomic'); $('#micMeterTxt').textContent = 'Mic'; m.title = 'Microphone: ' + (at.label || 'default') + '. The bar should move when you talk.';
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  try {
+    audioCtx = new AC(); audioCtx.resume().catch(() => {});
+    const an = audioCtx.createAnalyser(); an.fftSize = 1024;
+    audioCtx.createMediaStreamSource(new MediaStream([at])).connect(an);   // analyser only: nothing is played back
+    const buf = new Uint8Array(an.fftSize), bar = $('#micMeter i');
+    meterT = setInterval(() => {
+      an.getByteTimeDomainData(buf);
+      let sum = 0; for (let i = 0; i < buf.length; i++) { const d = (buf[i] - 128) / 128; sum += d * d; }
+      const rms = Math.sqrt(sum / buf.length);
+      bar.style.width = Math.min(100, rms * 400) + '%';
+      if (recorder) recPeak = Math.max(recPeak, rms);
+    }, 100);
+  } catch (e) {}
+}
+function stopMeter() {
+  clearInterval(meterT); meterT = 0;
+  if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+  $('#micMeter').classList.add('hidden');
+}
 function stopCamera() {
+  stopMeter();
   if (camStream) camStream.getTracks().forEach(t => t.stop());
   camStream = null; el.cam.srcObject = null; camInfoText = ''; camUi();
 }
@@ -686,7 +739,8 @@ function startRecording() {
   if (recMime) opts.mimeType = recMime;
   try { recorder = new MediaRecorder(camStream, opts); }
   catch (e) { try { recorder = new MediaRecorder(camStream); } catch (e2) { recorder = null; flash('Could not start recording'); return; } }
-  recChunks = [];
+  recChunks = []; recPeak = 0; recHadAudio = camStream.getAudioTracks().length > 0;
+  if (!recHadAudio) flash('Warning: no microphone, so this recording will have no sound.', 6000);
   const rec = recorder;
   rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
   rec.onstop = () => finishRecording(rec);
@@ -710,6 +764,10 @@ function finishRecording(rec) {
   if (!recChunks.length) return;
   recBlob = new Blob(recChunks, { type }); recChunks = []; saved = false;
   $('#saveInfo').textContent = `${fmt(recDur)} · ${(recBlob.size / 1048576).toFixed(1)} MB · ${type.includes('mp4') ? 'MP4' : 'WebM'}`;
+  const warn = $('#saveWarn');
+  if (!recHadAudio) { warn.textContent = 'This video has no sound: no microphone was available. Allow the microphone for this site and reload.'; warn.classList.remove('hidden'); }
+  else if (recPeak < 0.004) { warn.textContent = 'No sound was picked up. Choose the right Microphone under Camera & recording, and watch the Mic bar move while you talk.'; warn.classList.remove('hidden'); }
+  else warn.classList.add('hidden');
   $('#saveDlg').classList.remove('hidden');
 }
 function recFile() {
