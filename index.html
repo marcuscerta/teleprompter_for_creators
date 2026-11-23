@@ -122,7 +122,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       <div class="card quick">
         <div class="field"><label>Speed <b id="speedV"></b></label><input id="speed" type="range" min="1" max="100" step="1"></div>
         <div class="field"><label>Font size <b id="sizeV"></b></label><input id="size" type="range" min="24" max="160" step="2"></div>
-        <div class="field"><label>Reading line height on screen <b id="guideV"></b></label><input id="guide" type="range" min="2" max="70" step="1"></div>
+        <div class="field"><label>Reading line position <b id="guideV"></b></label><input id="guide" type="range" min="2" max="70" step="1"></div>
         <div class="seg chips">
           <button id="mirror">Mirror ↔</button>
           <button id="flip">Flip ↕</button>
@@ -136,7 +136,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
         <div class="inner">
           <div class="field"><label>Text width <b id="widthV"></b></label><input id="width" type="range" min="40" max="100" step="1"></div>
           <div class="field"><label>Line spacing <b id="lineV"></b></label><input id="line" type="range" min="1" max="2.2" step="0.05"></div>
-          <div class="field"><label>Reading line thickness <b id="bandLinesV"></b></label><input id="bandLines" type="range" min="1" max="5" step="0.5"></div>
+          <div class="field"><label>Reading line height <b id="bandLinesV"></b></label><input id="bandLines" type="range" min="1" max="5" step="0.5"></div>
           <div class="field"><label>Countdown before start <b id="countdownV"></b></label><input id="countdown" type="range" min="0" max="10" step="1"></div>
           <div class="seg" id="theme">
             <button data-v="dark">White on black</button>
@@ -217,8 +217,14 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       <div class="sp">Size
         <button id="cSmall">A−</button><span class="val" id="cSizeV"></span><button id="cBig">A+</button>
       </div>
-      <div class="sp">Line
+
+    </div>
+    <div class="bar">
+      <div class="sp">Reading line position
         <button id="cLineUp" title="Move reading line up">▲</button><span class="val" id="cLineV"></span><button id="cLineDn" title="Move reading line down">▼</button>
+      </div>
+      <div class="sp">Reading line height
+        <button id="cBandDn" title="Shorter reading line">−</button><span class="val" id="cBandV"></span><button id="cBandUp" title="Taller reading line">+</button>
       </div>
     </div>
     <div class="bar">
@@ -257,6 +263,8 @@ const ACTIONS = [
   ['record',    'Record start / stop'],
   ['lineUp',    'Reading line up'],
   ['lineDown',  'Reading line down'],
+  ['bandUp',    'Reading line taller'],
+  ['bandDown',  'Reading line shorter'],
   ['faster',    'Faster'],
   ['slower',    'Slower'],
   ['back',      'Back a few lines'],
@@ -279,6 +287,8 @@ const DEFAULT_KEYS = {
   record:    ['KeyR'],
   lineUp:    [],
   lineDown:  [],
+  bandUp:    [],
+  bandDown:  [],
 };
 const DEFAULTS = {
   text: '', size: 64, width: 84, line: 1.4, speed: 30, guide: 30, bandLines: 1, countdown: 3,
@@ -391,7 +401,7 @@ function applyLook(keepPos) {
   el.dim.style.height = g + 'px';
   maxY = Math.max(0, el.content.offsetHeight - vh);
   setY(keepPos ? ratio * maxY : y);
-  $('#cSpeedV').textContent = S.speed; $('#cSizeV').textContent = S.size; $('#cLineV').textContent = S.guide + '%';
+  $('#cSpeedV').textContent = S.speed; $('#cSizeV').textContent = S.size; $('#cLineV').textContent = S.guide + '%'; $('#cBandV').textContent = bandText();
   $('#cMirror').classList.toggle('on', S.mirror); $('#cFlip').classList.toggle('on', S.flip);
 }
 function setY(v) {
@@ -444,6 +454,12 @@ const toggle = () => (playing || countTimer) ? pause() : play();
 const lines = n => S.size * S.line * n;
 const flipSign = () => S.flip ? -1 : 1;
 function setSpeed(d) { S.speed = Math.max(1, Math.min(100, S.speed + d)); save(); $('#speed').value = S.speed; $('#speedV').textContent = S.speed; $('#cSpeedV').textContent = S.speed; flash('Speed ' + S.speed); updateStatus(); }
+const bandText = () => (S.bandLines === 1 ? '1 line' : S.bandLines + ' lines');
+function setBand(d) {
+  S.bandLines = Math.max(1, Math.min(5, S.bandLines + d)); save();
+  $('#bandLines').value = S.bandLines; $('#bandLinesV').textContent = bandText();
+  applyLook(true);
+}
 function setGuide(d) {
   S.guide = Math.max(2, Math.min(70, S.guide + d)); save();
   $('#guide').value = S.guide; $('#guideV').textContent = S.guide + '%';
@@ -520,6 +536,8 @@ $('#cFwd').onclick = () => setY(y + lines(3));
 $('#cPlay').onclick = toggle;
 $('#cSlow').onclick = () => setSpeed(-2);
 $('#cFast').onclick = () => setSpeed(2);
+$('#cBandUp').onclick = () => setBand(0.5);
+$('#cBandDn').onclick = () => setBand(-0.5);
 $('#cLineUp').onclick = () => setGuide(-3);
 $('#cLineDn').onclick = () => setGuide(3);
 $('#cSmall').onclick = () => setSize(-4);
@@ -673,6 +691,8 @@ const run = {
   record: () => toggleRecording(),
   lineUp: () => setGuide(-3),
   lineDown: () => setGuide(3),
+  bandUp: () => setBand(0.5),
+  bandDown: () => setBand(-0.5),
   faster: () => setSpeed(2),
   slower: () => setSpeed(-2),
   back: () => setY(y - lines(3)),
