@@ -122,6 +122,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       <div class="card quick">
         <div class="field"><label>Speed <b id="speedV"></b></label><input id="speed" type="range" min="1" max="100" step="1"></div>
         <div class="field"><label>Font size <b id="sizeV"></b></label><input id="size" type="range" min="24" max="160" step="2"></div>
+        <div class="field"><label>Reading line height on screen <b id="guideV"></b></label><input id="guide" type="range" min="2" max="70" step="1"></div>
         <div class="seg chips">
           <button id="mirror">Mirror ↔</button>
           <button id="flip">Flip ↕</button>
@@ -131,12 +132,11 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       </div>
 
       <details class="card">
-        <summary>Text &amp; reading line</summary>
+        <summary>Text &amp; reading line options</summary>
         <div class="inner">
           <div class="field"><label>Text width <b id="widthV"></b></label><input id="width" type="range" min="40" max="100" step="1"></div>
           <div class="field"><label>Line spacing <b id="lineV"></b></label><input id="line" type="range" min="1" max="2.2" step="0.05"></div>
-          <div class="field"><label>Reading line position <b id="guideV"></b></label><input id="guide" type="range" min="5" max="70" step="1"></div>
-          <div class="field"><label>Reading line height <b id="bandLinesV"></b></label><input id="bandLines" type="range" min="1" max="5" step="0.5"></div>
+          <div class="field"><label>Reading line thickness <b id="bandLinesV"></b></label><input id="bandLines" type="range" min="1" max="5" step="0.5"></div>
           <div class="field"><label>Countdown before start <b id="countdownV"></b></label><input id="countdown" type="range" min="0" max="10" step="1"></div>
           <div class="seg" id="theme">
             <button data-v="dark">White on black</button>
@@ -217,6 +217,9 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
       <div class="sp">Size
         <button id="cSmall">A−</button><span class="val" id="cSizeV"></span><button id="cBig">A+</button>
       </div>
+      <div class="sp">Line
+        <button id="cLineUp" title="Move reading line up">▲</button><span class="val" id="cLineV"></span><button id="cLineDn" title="Move reading line down">▼</button>
+      </div>
     </div>
     <div class="bar">
       <button id="cMirror">Mirror ↔</button>
@@ -252,6 +255,8 @@ const $ = s => document.querySelector(s);
 const ACTIONS = [
   ['playPause', 'Play / pause'],
   ['record',    'Record start / stop'],
+  ['lineUp',    'Reading line up'],
+  ['lineDown',  'Reading line down'],
   ['faster',    'Faster'],
   ['slower',    'Slower'],
   ['back',      'Back a few lines'],
@@ -272,6 +277,8 @@ const DEFAULT_KEYS = {
   controls:  ['KeyC'],
   exit:      ['Escape'],
   record:    ['KeyR'],
+  lineUp:    [],
+  lineDown:  [],
 };
 const DEFAULTS = {
   text: '', size: 64, width: 84, line: 1.4, speed: 30, guide: 30, bandLines: 1, countdown: 3,
@@ -384,7 +391,7 @@ function applyLook(keepPos) {
   el.dim.style.height = g + 'px';
   maxY = Math.max(0, el.content.offsetHeight - vh);
   setY(keepPos ? ratio * maxY : y);
-  $('#cSpeedV').textContent = S.speed; $('#cSizeV').textContent = S.size;
+  $('#cSpeedV').textContent = S.speed; $('#cSizeV').textContent = S.size; $('#cLineV').textContent = S.guide + '%';
   $('#cMirror').classList.toggle('on', S.mirror); $('#cFlip').classList.toggle('on', S.flip);
 }
 function setY(v) {
@@ -437,6 +444,11 @@ const toggle = () => (playing || countTimer) ? pause() : play();
 const lines = n => S.size * S.line * n;
 const flipSign = () => S.flip ? -1 : 1;
 function setSpeed(d) { S.speed = Math.max(1, Math.min(100, S.speed + d)); save(); $('#speed').value = S.speed; $('#speedV').textContent = S.speed; $('#cSpeedV').textContent = S.speed; flash('Speed ' + S.speed); updateStatus(); }
+function setGuide(d) {
+  S.guide = Math.max(2, Math.min(70, S.guide + d)); save();
+  $('#guide').value = S.guide; $('#guideV').textContent = S.guide + '%';
+  applyLook(true);
+}
 function setSize(d) { S.size = Math.max(24, Math.min(160, S.size + d)); save(); $('#size').value = S.size; $('#sizeV').textContent = S.size + ' px'; applyLook(true); }
 
 let flashT;
@@ -508,6 +520,8 @@ $('#cFwd').onclick = () => setY(y + lines(3));
 $('#cPlay').onclick = toggle;
 $('#cSlow').onclick = () => setSpeed(-2);
 $('#cFast').onclick = () => setSpeed(2);
+$('#cLineUp').onclick = () => setGuide(-3);
+$('#cLineDn').onclick = () => setGuide(3);
 $('#cSmall').onclick = () => setSize(-4);
 $('#cBig').onclick = () => setSize(4);
 $('#cMirror').onclick = () => { S.mirror = !S.mirror; save(); applyLook(true); refreshEditor(); };
@@ -657,6 +671,8 @@ $('#saveDone').onclick = () => {
 const run = {
   playPause: () => { showControls(); toggle(); },
   record: () => toggleRecording(),
+  lineUp: () => setGuide(-3),
+  lineDown: () => setGuide(3),
   faster: () => setSpeed(2),
   slower: () => setSpeed(-2),
   back: () => setY(y - lines(3)),
