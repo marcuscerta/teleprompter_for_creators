@@ -74,7 +74,7 @@ input[type=range]{width:100%;height:32px;accent-color:var(--accent)}
 #progress{position:absolute;left:0;top:0;height:4px;background:var(--accent);width:0;z-index:5;pointer-events:none}
 #countOverlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30vmin;font-weight:800;color:var(--accent);pointer-events:none;z-index:6;text-shadow:0 0 40px rgba(0,0,0,.6)}
 #blank{position:absolute;inset:0;background:#000;z-index:8}
-#status{position:absolute;top:max(12px,env(safe-area-inset-top));right:16px;z-index:7;font-size:18px;color:var(--accent);background:rgba(0,0,0,.55);padding:6px 12px;border-radius:10px;pointer-events:none;font-variant-numeric:tabular-nums;transition:opacity .3s}
+#status{max-width:min(560px,90vw);text-align:right;position:absolute;top:max(12px,env(safe-area-inset-top));right:16px;z-index:7;font-size:18px;color:var(--accent);background:rgba(0,0,0,.55);padding:6px 12px;border-radius:10px;pointer-events:none;font-variant-numeric:tabular-nums;transition:opacity .3s}
 
 #controls{position:absolute;left:0;right:0;bottom:0;z-index:9;padding:12px max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
   background:linear-gradient(transparent,rgba(0,0,0,.88) 35%);display:flex;flex-direction:column;gap:10px;transition:opacity .35s,transform .35s;color:#fff}
@@ -480,9 +480,9 @@ function setGuide(d) {
 function setSize(d) { S.size = Math.max(24, Math.min(160, S.size + d)); save(); $('#size').value = S.size; $('#sizeV').textContent = S.size + ' px'; applyLook(true); }
 
 let flashT;
-function flash(msg) {
+function flash(msg, ms = 900) {
   el.status.textContent = msg; el.status.style.opacity = 1;
-  clearTimeout(flashT); flashT = setTimeout(updateStatus, 900);
+  clearTimeout(flashT); flashT = setTimeout(updateStatus, ms);
 }
 
 /* controls visibility */
@@ -595,6 +595,22 @@ function camUi() {
   $('#camInfo').classList.toggle('hidden', !has);
   $('#camInfo').textContent = camInfoText;
 }
+function camError(e) {
+  const n = (e && e.name) || '';
+  const safari = /Safari/.test(navigator.userAgent) && !/Chrome|CriOS|Edg|Chromium/.test(navigator.userAgent);
+  let m;
+  if (n === 'NotAllowedError' || n === 'SecurityError') {
+    m = safari ? 'Camera is blocked. On iPad: Settings → Safari → Camera, allow this site, then reload.'
+               : 'Camera is blocked. Click the camera icon at the right end of the address bar, choose Allow, then reload the page.';
+  } else if (n === 'NotFoundError' || n === 'OverconstrainedError') {
+    m = 'No camera found. Plug one in, or pick another under Camera device.';
+  } else if (n === 'NotReadableError' || n === 'AbortError') {
+    m = 'The camera is busy. Close other apps using it (Zoom, OBS, Camo, Logitech software) and try again.';
+  } else {
+    m = 'Camera error' + (n ? ' (' + n + ')' : '') + '.';
+  }
+  flash(m, 10000);
+}
 async function startCamera() {
   stopCamera();
   camUi();
@@ -607,7 +623,10 @@ async function startCamera() {
   try { camStream = await navigator.mediaDevices.getUserMedia({ video, audio: true }); }
   catch (e) {
     try { camStream = await navigator.mediaDevices.getUserMedia({ video }); noMic = true; }
-    catch (e2) { flash('Camera blocked. Allow it in Safari settings.'); camUi(); return; }
+    catch (e2) {
+      if (S.camDevice && (e2.name === 'NotFoundError' || e2.name === 'OverconstrainedError')) { S.camDevice = ''; save(); return startCamera(); }  // saved camera unplugged: fall back to automatic
+      camError(e2); camUi(); return;
+    }
   }
   if (!inPrompter() || !S.camOn) { stopCamera(); return; }
   el.cam.srcObject = camStream;
